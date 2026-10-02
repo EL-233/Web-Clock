@@ -496,6 +496,9 @@ body.light .arw-up      { border-bottom-color:#d93a3a; }    /* 浅色底上要�
 body.light .arw-dn      { border-top-color:#2f7fd4; }
 body.light .gear i      { background:#b4b4b4; }
 body.light .colon i     { background:#5c5c5c; }
+/* 自动主题开着时，把"主题"那一行压暗 —— 它此刻由日出日落接管、不由按钮决定。
+   按钮仍然可点（点一下就自动关掉自动主题并采用你选的那个），只是视觉上退让。 */
+body.auto-theme .panel .seg[data-k="theme"] { opacity:.4; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 .06rem .34rem rgba(0,0,0,.16); }
@@ -857,6 +860,7 @@ body.h12 .ampm { display:block; }
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
     setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
+    setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
@@ -868,7 +872,12 @@ body.h12 .ampm { display:block; }
 
   function setSetting(k, v) {
     if (k === 'h12')   { settings.h12   = (v === '1'); }
-    if (k === 'theme') { settings.theme = (v === 'light') ? 'light' : 'dark'; }
+    // 手动选主题 → 自动主题同时关掉。两者【互斥】：不能出现"自动开着、
+    // 但你刚手动选的颜色又被下一秒的日出日落判定覆盖回去"这种状态。
+    if (k === 'theme') {
+      settings.theme = (v === 'light') ? 'light' : 'dark';
+      settings.autoTheme = false;
+    }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
     if (k === 'colon') { settings.colon = (v === '1'); }
     if (k === 'autoTheme') {
@@ -1171,9 +1180,10 @@ body.h12 .ampm { display:block; }
 
   /* 自动主题：日出后转浅色、日落后转深色。
 
-     ⚠️ 只在【昼夜状态发生变化】时才动作，不是每次检查都套用 ——
-        否则用户手动切的主题会被下一秒立刻覆盖回去，那个按钮就形同虚设。
-        手动切过之后，自动逻辑要等到下一次日出/日落才会重新接管。
+     ⚠️ 与手动选主题【互斥】：在 setSetting 里，手动选主题会把 autoTheme 关掉，
+        所以这里不存在"和用户手动选择打架"的情况。
+        而"只在状态变化时动作"这一条仍然保留 ——
+        没有它的话，每次 tick 都会重设主题类，白做无谓的 DOM 写入。
 
      日出日落数据取不到（接口失败、极区无日出）就整体不动作，
      保持用户当前选的主题 —— 宁可不同步，也不要拿错时间把主题切错。 */
