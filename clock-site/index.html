@@ -295,7 +295,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
    同样定宽：天气描述最长 4 个汉字、概率最长 "100%"，
    不定宽的话这些长短变化会把整条底栏推得左右晃。 */
 .wx-next {
-  width:2.6rem;
+  width:2.8rem;   /* 最坏情况 "1h晴间多云" 约 2.29rem，留出约 18% 余量（2.6 只剩 12%，不够） */
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
@@ -589,7 +589,7 @@ body.h12 .ampm { display:block; }
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:space-between; justify-content:space-between;
-  height:.98rem;                 /* 原来 .72rem */
+  height:.86rem;                 /* 面板现在 6 行，行高比 5 行时收一点，保证横屏放得下 */
 }
 .panel .lbl {
   font-size:.36rem;
@@ -762,6 +762,15 @@ body.h12 .ampm { display:block; }
       <button type="button" data-v="0">关</button>
     </span>
   </div>
+  <!-- 数据源：本地预览时 /weather 不可用，用「示例」看版面、「离线」看降级 -->
+  <div class="row">
+    <span class="lbl">数据源</span>
+    <span class="seg" data-k="dataSrc">
+      <button type="button" data-v="live">实时</button>
+      <button type="button" data-v="demo">示例</button>
+      <button type="button" data-v="offline">离线</button>
+    </span>
+  </div>
 </div>
 
 <script>
@@ -817,7 +826,8 @@ body.h12 .ampm { display:block; }
      存不住就退回内存里的默认值。
      —— 设置记不住可以接受，但它绝不能把时钟本身搞挂。 */
   var STORE_KEY = 'clockSettings';
-  var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true };
+  var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true,
+                    dataSrc:'live' };   // live | demo | offline —— 见设置面板「数据源」
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
   var sunToday     = null;   // 今日 { rise: Date, set: Date }，来自天气接口；取不到就保持 null
@@ -844,6 +854,9 @@ body.h12 .ampm { display:block; }
       }
       if (o.colon === true || o.colon === false)     { settings.colon = o.colon; }
       if (o.autoTheme === true || o.autoTheme === false) { settings.autoTheme = o.autoTheme; }
+      if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
+        settings.dataSrc = o.dataSrc;
+      }
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
 
@@ -866,6 +879,7 @@ body.h12 .ampm { display:block; }
       var cur  = (k === 'h12')       ? (settings.h12 ? '1' : '0')
                : (k === 'colon')     ? (settings.colon ? '1' : '0')
                : (k === 'autoTheme') ? (settings.autoTheme ? '1' : '0')
+               : (k === 'dataSrc')   ? settings.dataSrc
                : (k === 'theme')     ? settings.theme
                :                       settings.style;
       var btns = seg.getElementsByTagName('button');
@@ -911,6 +925,10 @@ body.h12 .ampm { display:block; }
     if (k === 'autoTheme') {
       settings.autoTheme = (v === '1');
       lastDayState = null;      // 重新打开时立刻按当前昼夜状态套用一次
+    }
+    if (k === 'dataSrc') {
+      settings.dataSrc = (v === 'demo' || v === 'offline') ? v : 'live';
+      fetchWeather();           // 立刻用新数据源重画一次，不用等下一个刷新周期
     }
     saveSettings();
     applySettings();
@@ -1327,7 +1345,54 @@ body.h12 .ampm { display:block; }
     setText(wxV1, v1);
   }
 
+  /* ================= 示例数据（本地预览用） =================
+     本机跑 python -m http.server 时没有 Netlify 代理，/weather 是 404，
+     天气那几栏永远是空的 —— 改版式时根本看不到效果。
+     这里造一份【结构与真实接口完全一致】的数据，让版面和数值长短都能看到真实样子。
+     只在设置里选「示例」时走这条，绝不参与真实运行。
+
+     日出日落用【今天的日期】拼，所以「自动主题」在示例模式下也能一起验。 */
+  function demoData() {
+    var p2 = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var stamp = function (d) {
+      return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate())
+           + 'T' + p2(d.getHours()) + ':00';
+    };
+    var n0   = new Date();
+    var base = new Date(n0.getFullYear(), n0.getMonth(), n0.getDate(), 0, 0, 0, 0);
+    var time = [], prob = [], code = [];
+    for (var i = 0; i < 48; i++) {                  // 两天，覆盖跨午夜
+      var d  = new Date(base.getTime() + i * 3600000);
+      var hh = d.getHours();
+      time.push(stamp(d));
+      // 一条确定性的、看着合理的起伏：清晨概率高、午后低
+      prob.push(Math.round(32 - 28 * Math.cos((hh - 4) / 24 * 2 * Math.PI)));
+      code.push(hh < 7 ? 45 : hh < 11 ? 3 : hh < 17 ? 1 : 2);
+    }
+    var today = stamp(base).slice(0, 10);
+    return {
+      current: { temperature_2m: 27.4, weather_code: 2 },
+      daily:   { temperature_2m_max: [30.8], temperature_2m_min: [24.3],
+                 sunrise: [today + 'T06:14'], sunset: [today + 'T18:09'] },
+      hourly:  { time: time,
+                 precipitation_probability: prob,
+                 weather_code: code }
+    };
+  }
+
+  /* 模拟「拉不到数据」：把各槽位恢复成占位符 - ，并清掉日出日落。
+     清掉日出日落是有意的 —— 真实断网时也确实拿不到，自动主题就该不动作。 */
+  function showWeatherPlaceholder() {
+    setText(wxMain, '-'); setText(wxHi, '-'); setText(wxLo, '-');
+    setText(wxNextW, ''); setText(wxNextP, '');
+    setText(wxV1, '-');
+    sunToday = null;
+  }
+
   function fetchWeather() {
+    if (settings.dataSrc === 'demo') { renderWeather(demoData()); return; }
+    if (settings.dataSrc === 'offline') { showWeatherPlaceholder(); return; }
+
     var url = '/weather'
             + '?latitude='  + LAT
             + '&longitude=' + LON
