@@ -220,6 +220,11 @@ body.style-v1 .wx-v2          { display:none; }
    文字栏沿用 v2 那套（需求是「在当前基础上」改）。 */
 body.style-v3 #ss   { display:none; }
 body.style-v3 .ring { display:block; }
+/* 走带关掉时整条隐藏。
+   ⚠️ 环是【绝对定位】、不参加 flex 布局，所以隐藏它不会让时钟变大 ——
+      布局、FOOTPRINT、根字号一个都不用动。想让关掉走带后时钟变大是另一件事，
+      得动 FOOTPRINT.v3.w（现在由天气栏 10.3rem 决定，不是环盒 9.42rem）。 */
+body.style-v3.ring-off .ring { display:none; }
 
 /* v3 把竖向占位收紧，好让卡组能放大。
    它是【高度受限】的：宽度方向允许 R≈92，高度方向只到 75。
@@ -891,6 +896,17 @@ body.h12 .ampm { display:block; }
         <button type="button" data-v="0">关</button>
       </span>
     </div>
+    <!-- 走带（走秒样式外圈那条环）也归「时间」，理由同上：它和冒号是同一类东西
+         —— 都是【秒的指示器】。只有走秒样式有这条环，其它样式下这一行不生效。
+         三个选项让它落在 3 行，正好与「外观」页等高 —— 切标签页时面板高度不变。 -->
+    <div class="row">
+      <span class="lbl">走带</span>
+      <span class="seg" data-k="ringMode">
+        <button type="button" data-v="off">关</button>
+        <button type="button" data-v="cont">连续</button>
+        <button type="button" data-v="pulse">脉冲</button>
+      </span>
+    </div>
   </div>
 
   <!-- ── 天气 ── -->
@@ -969,6 +985,7 @@ body.h12 .ampm { display:block; }
   var STORE_KEY = 'clockSettings';
   var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true,
                     dataSrc:'live',                                   // live | demo | offline
+                    ringMode:'cont',                                  // off | cont | pulse（走秒样式的走带）
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
@@ -1009,6 +1026,9 @@ body.h12 .ampm { display:block; }
       if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
         settings.dataSrc = o.dataSrc;
       }
+      if (o.ringMode === 'off' || o.ringMode === 'cont' || o.ringMode === 'pulse') {
+        settings.ringMode = o.ringMode;
+      }
       if (o.sizeMul && typeof o.sizeMul === 'object') {
         settings.sizeMul.v1 = clampMul(o.sizeMul.v1);
         settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
@@ -1033,12 +1053,13 @@ body.h12 .ampm { display:block; }
     for (var i = 0; i < segs.length; i++) {
       var seg  = segs[i];
       var k    = seg.getAttribute('data-k');
-      var cur  = (k === 'h12')       ? (settings.h12 ? '1' : '0')
-               : (k === 'colon')     ? (settings.colon ? '1' : '0')
-               : (k === 'autoTheme') ? (settings.autoTheme ? '1' : '0')
-               : (k === 'dataSrc')   ? settings.dataSrc
-               : (k === 'theme')     ? settings.theme
-               :                       settings.style;
+      var cur  = (k === 'h12')      ? (settings.h12 ? '1' : '0')
+               : (k === 'colon')    ? (settings.colon ? '1' : '0')
+               : (k === 'autoTheme')? (settings.autoTheme ? '1' : '0')
+               : (k === 'dataSrc')  ? settings.dataSrc
+               : (k === 'theme')    ? settings.theme
+               : (k === 'ringMode') ? settings.ringMode
+               :                      settings.style;   // 兜底 = 卡片样式（那个 .seg 没有 data-k 分支）
       var btns = seg.getElementsByTagName('button');
       for (var j = 0; j < btns.length; j++) {
         setClass(btns[j], 'on', btns[j].getAttribute('data-v') === cur);
@@ -1095,12 +1116,18 @@ body.h12 .ampm { display:block; }
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
     setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
+    setClass(bodyEl, 'ring-off', settings.ringMode === 'off'); // 走带开关（只对走秒样式有意义）
     setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
-    // 环只要 v3；但冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环
-    if (settings.style === 'v3' || settings.colon) { startRing(); } else { stopRing(); }
+    // 环要「v3 且没关掉」；冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环。
+    // 两个都关掉时整条帧循环停掉：这是这台设备唯一持续烧 CPU 的地方，能停就停。
+    if ((settings.style === 'v3' && settings.ringMode !== 'off') || settings.colon) {
+      startRing();
+    } else {
+      stopRing();
+    }
     syncSegs();
     syncStep();   // 步进器显示的是"当前样式"的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
@@ -1116,6 +1143,7 @@ body.h12 .ampm { display:block; }
     }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
     if (k === 'colon') { settings.colon = (v === '1'); }
+    if (k === 'ringMode') { settings.ringMode = (v === 'off' || v === 'pulse') ? v : 'cont'; }
     if (k === 'autoTheme') {
       settings.autoTheme = (v === '1');
       lastDayState = null;      // 重新打开时立刻按当前昼夜状态套用一次
@@ -1263,7 +1291,10 @@ body.h12 .ampm { display:block; }
 
   /* ========= 走秒带 + 冒号呼吸（v3 样式）=========
      这个 rAF 循环驱动两样东西：走秒带的进度、两卡之间冒号的 1Hz 呼吸。
-     进度 = 本分钟已过的【小数秒】/ 60，所以环是连续推进而不是每秒跳一格。
+     走带进度 = 本分钟已过的秒数 / 60。有三种模式（设置里可切）：
+       关   整条隐藏，连帧循环都可以停掉（见 applySettings）
+       连续 用【小数秒】，环是均匀推进的 —— 本文件从前只有这一种
+       脉冲 一秒走一格，但那一格是缓入缓出的，不是硬切（见 ringSeconds）
 
      用 requestAnimationFrame 驱动 —— 它跟着屏幕刷新走，iPad 上就是 60Hz 跑满；
      而 setInterval 与 vsync 不同步，在高刷屏上反而看得出抖动/拍频。
@@ -1324,6 +1355,31 @@ body.h12 .ampm { display:block; }
     return 1 - smoothstep((p - (2 * PLAT + RAMP)) / RAMP);
   }
 
+  /* 走带「脉冲」模式：把连续的小数秒换成"每秒跳一格、但跳得缓"的秒数。
+     缓动曲线直接复用冒号的 smoothstep，窗口也取同一个 RAMP（0.18 秒）——
+     这正是"和冒号同一种非线性程度"。
+
+     ⚠️ 缓动段为什么只能落在【整秒之内】，不能像冒号那样跨在整秒两侧：
+        环的位置必须【单调不减】（它是进度，不能倒退），且每秒正好前进 1/60。
+        于是"缓动百分比"必须每秒从 0 走到 1。若让它跨过整秒 ——
+        整秒那一刻 n 会 +1，而缓动值还停在 0.61，位置瞬间跳掉 1/60，
+        那就成硬切了，反而不"非线性"。
+        所以只有两种落法：整秒【之后】缓动，或整秒【之前】缓动。这里取后者。
+
+     取"整秒之前"的两个理由：
+       1. 与冒号对得更齐。眼睛感知到"变了"是在缓动到 ALIGN_T（0.61）那一刻。
+          取后者：落在整秒【前】0.61 处，即早 0.07 秒；
+          若取前者：落在整秒【后】0.11 秒。前者误差更大。
+       2. 整分回绕时好看得多。第 59 秒的缓动恰好把环推到【满圈】，
+          紧接着 ring-flash 播满圈淡出 —— "走满 → 闪一下 → 归零"一气呵成。
+          若取前者，环会在第 59 秒【开头】就跳满，然后干等 0.8 秒。 */
+  function ringSeconds(sec) {
+    if (settings.ringMode !== 'pulse') { return sec; }   // 连续模式：原样返回
+    var n = Math.floor(sec), f = sec - n;
+    if (f < 1 - RAMP) { return n; }                      // 整秒前 82%：不动
+    return n + smoothstep((f - (1 - RAMP)) / RAMP);      // 最后 0.18 秒：缓入缓出跳一格
+  }
+
   var colonEl   = document.getElementById('colon');    // 时∣分
   var colon2El  = document.getElementById('colon2');   // 分∣秒（只在"平衡"样式显示）
   var ringFill  = document.getElementById('ring-fill');
@@ -1347,20 +1403,22 @@ body.h12 .ampm { display:block; }
 
   function updateRing() {
     if (!ringFill) { return; }
-    // 环只管 v3；冒号呼吸三种样式都要。两者都不需要、又没有正在播的淡出，就直接返回。
-    var ringOn  = (settings.style === 'v3');
+    // 环要「v3 且没关掉」；冒号呼吸三种样式都要。两者都不需要、又没有正在播的淡出，就直接返回。
+    var ringOn  = (settings.style === 'v3' && settings.ringMode !== 'off');
     var colonOn = settings.colon;
     if (!ringOn && !colonOn && !flashT0) { return; }
 
     var now = new Date();
-    var sec = now.getSeconds() + now.getMilliseconds() / 1000;
+    var sec = now.getSeconds() + now.getMilliseconds() / 1000;   // 【真】小数秒
 
     if (ringOn) {
-      // 回绕检测：本帧秒数明显小于上一帧 → 刚跨过整分
+      // 回绕检测：本帧秒数明显小于上一帧 → 刚跨过整分。
+      // 比较用真小数秒，不用 ringSeconds 的缓动值 —— 缓动值在整秒前会提前跳格，
+      // 拿它做回绕判定会误判。
       if (ringPrev >= 0 && sec + 0.5 < ringPrev) { flashT0 = Date.now(); }
       ringPrev = sec;
 
-      var drawn = ringLen * (sec / 60);
+      var drawn = ringLen * (ringSeconds(sec) / 60);
       ringFill.setAttribute('stroke-dashoffset', ringLen - drawn);
       // 整分那一瞬 drawn = 0，而有些渲染器会给「长度为零的虚线」画出一条发丝线
       // —— 在 iPad 上看得见、桌面浏览器看不见，正是这一类的引擎差异。
