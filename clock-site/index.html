@@ -729,6 +729,13 @@ body.h12 .ampm { display:block; }
       <button type="button" data-v="0">关</button>
     </span>
   </div>
+  <div class="row">
+    <span class="lbl">自动主题</span>
+    <span class="seg" data-k="autoTheme">
+      <button type="button" data-v="1">开</button>
+      <button type="button" data-v="0">关</button>
+    </span>
+  </div>
 </div>
 
 <script>
@@ -779,7 +786,10 @@ body.h12 .ampm { display:block; }
      存不住就退回内存里的默认值。
      —— 设置记不住可以接受，但它绝不能把时钟本身搞挂。 */
   var STORE_KEY = 'clockSettings';
-  var settings  = { h12:false, theme:'dark', style:'v2', colon:true };
+  var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true };
+
+  var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
+  var sunToday     = null;   // 今日 { rise: Date, set: Date }，来自天气接口；取不到就保持 null
 
   var canStore = (function () {
     try {
@@ -802,6 +812,7 @@ body.h12 .ampm { display:block; }
         settings.style = o.style;
       }
       if (o.colon === true || o.colon === false)     { settings.colon = o.colon; }
+      if (o.autoTheme === true || o.autoTheme === false) { settings.autoTheme = o.autoTheme; }
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
 
@@ -821,10 +832,11 @@ body.h12 .ampm { display:block; }
     for (var i = 0; i < segs.length; i++) {
       var seg  = segs[i];
       var k    = seg.getAttribute('data-k');
-      var cur  = (k === 'h12')   ? (settings.h12 ? '1' : '0')
-               : (k === 'colon') ? (settings.colon ? '1' : '0')
-               : (k === 'theme') ? settings.theme
-               :                   settings.style;
+      var cur  = (k === 'h12')       ? (settings.h12 ? '1' : '0')
+               : (k === 'colon')     ? (settings.colon ? '1' : '0')
+               : (k === 'autoTheme') ? (settings.autoTheme ? '1' : '0')
+               : (k === 'theme')     ? settings.theme
+               :                       settings.style;
       var btns = seg.getElementsByTagName('button');
       for (var j = 0; j < btns.length; j++) {
         setClass(btns[j], 'on', btns[j].getAttribute('data-v') === cur);
@@ -859,6 +871,10 @@ body.h12 .ampm { display:block; }
     if (k === 'theme') { settings.theme = (v === 'light') ? 'light' : 'dark'; }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
     if (k === 'colon') { settings.colon = (v === '1'); }
+    if (k === 'autoTheme') {
+      settings.autoTheme = (v === '1');
+      lastDayState = null;      // 重新打开时立刻按当前昼夜状态套用一次
+    }
     saveSettings();
     applySettings();
   }
@@ -1149,6 +1165,34 @@ body.h12 .ampm { display:block; }
       dateEl.firstChild.nodeValue =
         (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
     }
+
+    autoThemeTick();   // 1Hz 检查昼夜切换（只在真正跨越日出/日落时才动作）
+  }
+
+  /* 自动主题：日出后转浅色、日落后转深色。
+
+     ⚠️ 只在【昼夜状态发生变化】时才动作，不是每次检查都套用 ——
+        否则用户手动切的主题会被下一秒立刻覆盖回去，那个按钮就形同虚设。
+        手动切过之后，自动逻辑要等到下一次日出/日落才会重新接管。
+
+     日出日落数据取不到（接口失败、极区无日出）就整体不动作，
+     保持用户当前选的主题 —— 宁可不同步，也不要拿错时间把主题切错。 */
+  function autoThemeTick() {
+    if (!settings.autoTheme || !sunToday) { return; }
+    var t = Date.now();
+    var isDay = (t >= sunToday.rise.getTime() && t < sunToday.set.getTime());
+    if (isDay === lastDayState) { return; }
+    lastDayState = isDay;
+
+    var want = isDay ? 'light' : 'dark';
+    if (settings.theme === want) { return; }   // 已经是这个主题，不必重设
+    settings.theme = want;
+    saveSettings();
+    // 这里只改主题类，不走 applySettings()：主题只影响颜色，
+    // 不需要重算 layout / 环几何；而且 applySettings() 末尾会调 tick()，
+    // 从 tick 调过来会形成重入。
+    setClass(bodyEl, 'light', want === 'light');
+    syncSegs();
   }
 
   /* 让 tick 紧贴【整秒】触发，而不是固定间隔轮询。
@@ -1182,12 +1226,34 @@ body.h12 .ampm { display:block; }
     if (t.nodeValue !== str) { t.nodeValue = str; }
   }
 
+  /* 把接口返回的 "2026-10-02T06:14" 解析成 Date。
+     接口给的是【本地时间】且不带时区后缀 —— 不能直接丢给 new Date()：
+     ES5 与 ES6 对"无时区的日期时间串"的解释不一致，各家引擎也不同。
+     手动拆字段用 new Date(y,m,d,h,mi) 构造，语义永远明确。 */
+  function parseLocal(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s || '');
+    if (!m) { return null; }
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], 0, 0);
+  }
+
+  /* 从天气响应里取出今日日出日落。取不到就留 null —— 自动主题会因此不动作，
+     这比拿错时间把主题切错要好。 */
+  function readSun(day) {
+    var r = parseLocal(day && day.sunrise ? day.sunrise[0] : null);
+    var s = parseLocal(day && day.sunset  ? day.sunset[0]  : null);
+    if (r && s && s > r) {
+      sunToday = { rise: r, set: s };
+    }
+  }
+
   function renderWeather(d) {
     var cur  = d.current, day = d.daily;
     var now  = Math.round(cur.temperature_2m);
     var hi   = Math.round(day.temperature_2m_max[0]);
     var lo   = Math.round(day.temperature_2m_min[0]);
     var desc = WMO[cur.weather_code] || '';
+
+    readSun(day);
 
     // v2 两栏版
     setText(wxMain, desc + ' ' + now + '°');   // 左栏：描述 + 当前温度
@@ -1202,7 +1268,7 @@ body.h12 .ampm { display:block; }
             + '?latitude='  + LAT
             + '&longitude=' + LON
             + '&current=temperature_2m,weather_code'
-            + '&daily=temperature_2m_max,temperature_2m_min'
+            + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset'
             + '&timezone=Asia%2FShanghai&forecast_days=1';
 
     var xhr = new XMLHttpRequest();
