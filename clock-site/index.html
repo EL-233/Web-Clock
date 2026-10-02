@@ -1001,14 +1001,21 @@ body.h12 .ampm { display:block; }
        [2·PLAT+RAMP, 1)              smoothstep 降回 0
      选 smoothstep 是因为它两端的斜率恰为 0 —— 与两侧平顶无缝相接，
      这正是"方波的棱角被圆滑掉"的数学形式；用线性过渡则会留下两个折角。
-     相位：秒数为整数时 p=0 → 落在低谷，即【整秒最暗】。 */
+     相位：PHASE 把"亮"的平顶【正对整秒】—— 平顶中心落在 p=0，
+     于是冒号最亮的那一刻就是秒数跳变的那一刻（见下面的推导）。 */
   var PLAT = 0.32;                    // 高低平顶各占一秒的比例
   var RAMP = 0.5 - PLAT;              // 过渡段占比（= 0.18）
+
+  /* 相位偏移：未加偏移时"亮"的平顶落在 [PLAT+RAMP, 2·PLAT+RAMP] = [.50, .82]，
+     中心在 .66。要让整秒（相位 0）正好落在平顶中心，就把整体推移 .66：
+       相位 0 → .66（亮平顶正中）    相位 .5 → 1.16 → .16（暗平顶） */
+  var PHASE = PLAT + RAMP + PLAT / 2; // = 0.66
 
   function smoothstep(t) { return t * t * (3 - 2 * t); }
 
   function colonBeat(sec) {
-    var p = sec - Math.floor(sec);    // 0..1 的周期相位
+    var p = sec - Math.floor(sec) + PHASE;   // 0..1 的周期相位（已对齐整秒）
+    if (p >= 1) { p -= 1; }
     if (p < PLAT)            { return 0; }
     if (p < PLAT + RAMP)     { return smoothstep((p - PLAT) / RAMP); }
     if (p < 2 * PLAT + RAMP) { return 1; }
