@@ -549,11 +549,17 @@ body.light .colon i     { background:#5c5c5c; }
 body.auto-theme .panel .seg[data-k="theme"] { opacity:.4; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
-body.light .panel       { background:#fff; box-shadow:0 .06rem .34rem rgba(0,0,0,.16); }
+body.light .panel       { background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.16); }
 body.light .panel .lbl  { color:#6f6f6f; }
 body.light .panel .seg  { background:#ededed; }
 body.light .panel .seg button    { color:#6f6f6f; }
 body.light .panel .seg button.on { background:#cfcfcf; color:#111; }
+body.light .panel .tabs button       { color:#6f6f6f; }
+body.light .panel .tabs button.on    { background:#e2e2e2; color:#111; }
+body.light .panel .step              { background:#ededed; }
+body.light .panel .step button       { color:#6f6f6f; }
+body.light .panel .step button:active { background:#dedede; }
+body.light .panel .step span         { color:#222; }
 
 /* ============================================================
    AM/PM —— 只挂在时卡上，12 小时制才显示
@@ -578,58 +584,90 @@ body.h12 .ampm { display:block; }
    图标画得很小很暗（不抢大钟的视觉），但触摸热区放大到 1.6rem，
    不用瞄准。面板收起时，整页除这一个热区外没有任何触摸响应。
    ============================================================ */
+/* ══════════════════════════════════════════════════════════════
+   界面（UI chrome）：设置齿轮 + 设置面板
+   ⚠️ 这里【一律用 px，不用 rem】。
+      根字号被内容尺度占用 —— 每套样式不一样，好让内容各自撑满屏幕。
+      界面若也跟着 rem 走，切样式时面板会从 463px 胀到 671px（差 45%）。
+      界面尺寸只跟屏幕像素有关，与内容尺度无关。
+      校验脚本里有一条硬断言：这段规则里不允许再出现 rem。
+   ══════════════════════════════════════════════════════════════ */
 .gear {
   position:fixed;
-  top:.1rem; right:.1rem;           /* 贴到最右上角 */
-  width:1.6rem; height:1.6rem;      /* 触摸热区，远大于图标本身 */
+  top:6px; right:6px;
+  width:44px; height:44px;          /* 触摸热区：手指舒适尺寸 */
   padding:0; border:0;
   background:none;
   z-index:60;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
 }
-/* 图标本体：就三条细横线，做得很小很淡，不抢大钟的视觉。
-   触摸热区仍是 .gear 那 1.6rem（只是看不见），所以线虽细也很好点。
+/* 图标：三条细横线，做得很小很淡，不抢大钟的视觉。
+   触摸热区仍是 .gear 那 44px（只是看不见），所以线虽细也很好点。
    不用 ⚙ 字符 —— 各字体的字形和字重差异太大，跨设备观感不稳。 */
 .gear i {
   position:absolute;
   left:50%;
-  width:.40rem; height:.042rem;
-  margin-left:-.2rem;
-  border-radius:.021rem;
+  width:20px; height:2px;
+  margin-left:-10px;
+  border-radius:1px;
   background:#3a3a3a;
 }
-.gear i:nth-child(1) { top:.64rem; }
-.gear i:nth-child(2) { top:.78rem; }
-.gear i:nth-child(3) { top:.92rem; }
+.gear i:nth-child(1) { top:14px; }
+.gear i:nth-child(2) { top:21px; }
+.gear i:nth-child(3) { top:28px; }
 
 .panel {
   position:fixed;
-  top:1.85rem; right:.1rem;         /* 跟着齿轮一起贴右上角 */
-  width:7.8rem;                  /* 原来 6.6rem —— 标签和按钮挤在一起 */
-  padding:.52rem .64rem;
-  border-radius:.3rem;
+  top:54px; right:6px;              /* 贴在齿轮下方 */
+  width:300px;
+  padding:12px;
+  border-radius:6px;
   background:#1b1b1b;
-  box-shadow:0 .06rem .34rem rgba(0,0,0,.55);
+  box-shadow:0 2px 14px rgba(0,0,0,.55);
   z-index:61;
   display:none;
 }
 .panel.on { display:block; }
 
+/* 分页标签：外观 / 时间 / 天气 */
+.panel .tabs {
+  display:-webkit-flex; display:flex;
+  margin:-4px -4px 8px;             /* 略微外扩，让标签的活动区更宽 */
+}
+.panel .tabs button {
+  -webkit-flex:1; flex:1;
+  height:30px;
+  border:0;
+  border-radius:4px;
+  background:none;
+  color:#8a8a8a;
+  font-size:13px;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.panel .tabs button.on { background:#2e2e2e; color:#fff; }
+
+/* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
+.panel .page      { display:none; min-height:102px; }   /* = 3 行 × 34 */
+.panel .page.on   { display:block; }
+
 .panel .row {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:space-between; justify-content:space-between;
-  height:.86rem;                 /* 面板现在 6 行，行高比 5 行时收一点，保证横屏放得下 */
+  height:34px;
 }
 .panel .lbl {
-  font-size:.36rem;
+  font-size:14px;
   color:#8a8a8a;
   font-family:"Avenir Next","PingFang SC",sans-serif;
 }
+/* 控件一：分段选择（枚举型，2–4 个互斥选项） */
 .panel .seg {
   display:-webkit-flex; display:flex;
-  border-radius:.18rem;
+  border-radius:4px;
   overflow:hidden;
   background:#101010;
 }
@@ -637,9 +675,9 @@ body.h12 .ampm { display:block; }
   border:0;
   border-radius:0;
   background:none;
-  padding:.22rem .36rem;         /* 原来 .14rem .26rem —— 按钮也好按一些 */
+  padding:6px 10px;
   color:#8a8a8a;
-  font-size:.34rem;
+  font-size:13px;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
@@ -647,6 +685,34 @@ body.h12 .ampm { display:block; }
 .panel .seg button.on {
   background:#3d3d3d;
   color:#fff;
+}
+/* 控件二：步进器（数值型，− 值 +）。目前只有「大小」用它。 */
+.panel .step {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  border-radius:4px;
+  overflow:hidden;
+  background:#101010;
+}
+.panel .step button {
+  width:30px; height:30px;
+  border:0;
+  border-radius:0;
+  background:none;
+  color:#8a8a8a;
+  font-size:16px;
+  line-height:1;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.panel .step button:active { background:#2a2a2a; }
+.panel .step span {
+  width:54px;
+  text-align:center;
+  font-size:13px;
+  color:#e0e0e0;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
 }
 
 </style>
@@ -761,50 +827,78 @@ body.h12 .ampm { display:block; }
 <button class="gear" id="gear" type="button" aria-label="设置"><i></i><i></i><i></i></button>
 
 <div class="panel" id="panel">
-  <div class="row">
-    <span class="lbl">小时制</span>
-    <span class="seg" data-k="h12">
-      <button type="button" data-v="0">24 小时</button>
-      <button type="button" data-v="1">12 小时</button>
-    </span>
+  <div class="tabs">
+    <button type="button" data-tab="look">外观</button>
+    <button type="button" data-tab="time">时间</button>
+    <button type="button" data-tab="wx">天气</button>
   </div>
-  <div class="row">
-    <span class="lbl">主题</span>
-    <span class="seg" data-k="theme">
-      <button type="button" data-v="dark">深色</button>
-      <button type="button" data-v="light">浅色</button>
-    </span>
+
+  <!-- ── 外观 ── -->
+  <div class="page on" data-page="look">
+    <div class="row">
+      <span class="lbl">卡片样式</span>
+      <span class="seg" data-k="style">
+        <button type="button" data-v="v1">平衡</button>
+        <button type="button" data-v="v2">层次</button>
+        <button type="button" data-v="v3">走秒</button>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lbl">主题</span>
+      <span class="seg" data-k="theme">
+        <button type="button" data-v="dark">深色</button>
+        <button type="button" data-v="light">浅色</button>
+      </span>
+    </div>
+    <!-- 大小：只改【当前选中样式】的倍率，每套样式各记各的。
+         放大有硬上限（内容不能顶出屏幕），由 layout() 夹取 —— 见那里的注释。 -->
+    <div class="row">
+      <span class="lbl">大小</span>
+      <span class="step" data-k="size">
+        <button type="button" data-step="-">−</button>
+        <span id="size-val">100%</span>
+        <button type="button" data-step="+">+</button>
+      </span>
+    </div>
   </div>
-  <div class="row">
-    <span class="lbl">样式</span>
-    <span class="seg" data-k="style">
-      <button type="button" data-v="v1">平衡</button>
-      <button type="button" data-v="v2">层次</button>
-      <button type="button" data-v="v3">走秒</button>
-    </span>
+
+  <!-- ── 时间 ── -->
+  <div class="page" data-page="time">
+    <div class="row">
+      <span class="lbl">小时制</span>
+      <span class="seg" data-k="h12">
+        <button type="button" data-v="0">24 小时</button>
+        <button type="button" data-v="1">12 小时</button>
+      </span>
+    </div>
+    <!-- 冒号归「时间」不归「外观」：它是秒的指示器，按功能分页比按视觉分页好找 -->
+    <div class="row">
+      <span class="lbl">冒号</span>
+      <span class="seg" data-k="colon">
+        <button type="button" data-v="1">开</button>
+        <button type="button" data-v="0">关</button>
+      </span>
+    </div>
   </div>
-  <div class="row">
-    <span class="lbl">冒号</span>
-    <span class="seg" data-k="colon">
-      <button type="button" data-v="1">开</button>
-      <button type="button" data-v="0">关</button>
-    </span>
-  </div>
-  <div class="row">
-    <span class="lbl">自动主题</span>
-    <span class="seg" data-k="autoTheme">
-      <button type="button" data-v="1">开</button>
-      <button type="button" data-v="0">关</button>
-    </span>
-  </div>
-  <!-- 数据源：本地预览时 /weather 不可用，用「示例」看版面、「离线」看降级 -->
-  <div class="row">
-    <span class="lbl">数据源</span>
-    <span class="seg" data-k="dataSrc">
-      <button type="button" data-v="live">实时</button>
-      <button type="button" data-v="demo">示例</button>
-      <button type="button" data-v="offline">离线</button>
-    </span>
+
+  <!-- ── 天气 ── -->
+  <div class="page" data-page="wx">
+    <!-- 本地预览时 /weather 不可用：用「示例」看版面、「离线」看降级 -->
+    <div class="row">
+      <span class="lbl">数据源</span>
+      <span class="seg" data-k="dataSrc">
+        <button type="button" data-v="live">实时</button>
+        <button type="button" data-v="demo">示例</button>
+        <button type="button" data-v="offline">离线</button>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lbl">自动主题</span>
+      <span class="seg" data-k="autoTheme">
+        <button type="button" data-v="1">开</button>
+        <button type="button" data-v="0">关</button>
+      </span>
+    </div>
   </div>
 </div>
 
@@ -862,7 +956,18 @@ body.h12 .ampm { display:block; }
      —— 设置记不住可以接受，但它绝不能把时钟本身搞挂。 */
   var STORE_KEY = 'clockSettings';
   var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true,
-                    dataSrc:'live' };   // live | demo | offline —— 见设置面板「数据源」
+                    dataSrc:'live',                                   // live | demo | offline
+                    sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
+
+  /* 大小调节的范围。100% = 现有观感，一点不变。 */
+  var SIZE_MIN = 0.70, SIZE_MAX = 1.20, SIZE_STEP = 0.05;
+
+  function clampMul(v) {
+    if (typeof v !== 'number' || isNaN(v)) { return 1; }
+    if (v < SIZE_MIN) { return SIZE_MIN; }
+    if (v > SIZE_MAX) { return SIZE_MAX; }
+    return Math.round(v * 100) / 100;     // 消掉浮点累加误差，否则会出来 0.9500000001
+  }
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
   var sunToday     = null;   // 今日 { rise: Date, set: Date }，来自天气接口；取不到就保持 null
@@ -891,6 +996,11 @@ body.h12 .ampm { display:block; }
       if (o.autoTheme === true || o.autoTheme === false) { settings.autoTheme = o.autoTheme; }
       if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
         settings.dataSrc = o.dataSrc;
+      }
+      if (o.sizeMul && typeof o.sizeMul === 'object') {
+        settings.sizeMul.v1 = clampMul(o.sizeMul.v1);
+        settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
+        settings.sizeMul.v3 = clampMul(o.sizeMul.v3);
       }
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
@@ -924,6 +1034,42 @@ body.h12 .ampm { display:block; }
     }
   }
 
+  /* ── 分页 ──
+     同时只显示一页。当前页记在变量里（不持久化）—— 重开面板停在上次那页。 */
+  var curPage = 'look';
+
+  function showPage(name) {
+    if (!name) { return; }
+    curPage = name;
+    var i, els;
+    els = panelEl.querySelectorAll('.tabs button');
+    for (i = 0; i < els.length; i++) {
+      setClass(els[i], 'on', els[i].getAttribute('data-tab') === name);
+    }
+    els = panelEl.querySelectorAll('.page');
+    for (i = 0; i < els.length; i++) {
+      setClass(els[i], 'on', els[i].getAttribute('data-page') === name);
+    }
+  }
+
+  /* ── 步进器 ──
+     改的是【当前选中样式】的倍率，每套样式各记各的。 */
+  function bumpSize(dir) {
+    var st = settings.style;
+    var v  = settings.sizeMul[st] + (dir === '-' ? -SIZE_STEP : SIZE_STEP);
+    settings.sizeMul[st] = clampMul(v);
+    saveSettings();
+    syncStep();
+    layout();          // 只影响根字号，不必走整条 applySettings()
+  }
+
+  /* 把步进器的显示值刷成"当前样式"的倍率 */
+  function syncStep() {
+    var el = document.getElementById('size-val');
+    if (!el) { return; }
+    setText(el, Math.round(settings.sizeMul[settings.style] * 100) + '%');
+  }
+
   /* 把设置落到 DOM。三处：
        body.h12      → AM/PM 显隐
        body.light    → 浅色主题的颜色覆盖
@@ -944,6 +1090,7 @@ body.h12 .ampm { display:block; }
     // 环只要 v3；但冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环
     if (settings.style === 'v3' || settings.colon) { startRing(); } else { stopRing(); }
     syncSegs();
+    syncStep();   // 步进器显示的是"当前样式"的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
   }
 
@@ -985,12 +1132,35 @@ body.h12 .ampm { display:block; }
      v3 的高度系数比别的样式大：它就是靠 CSS 里收窄竖向间距腾出的空间，
      才把 R 从 75.3 提到 86（卡组大 14%）。横屏下宽向允许到 92、高向到 86，
      所以最终是高度在约束 —— 想让 v3 再大就得继续压竖向。 */
+  /* 各样式【内容的实际占位】（rem）。用来反算"字号最多能多大而不溢出屏幕"。
+     卡组/环盒宽、竖排总高 —— 都是已知常量，见各自的 CSS 注释。 */
+  var FOOTPRINT = {
+    v1: { w: 13.08, h: 8.38 },   // 卡组 13.08rem 宽；竖排 1.4+1.35+2.88+1.35+1.4
+    v2: { w: 11.18, h: 7.44 },   // 卡组 11.18rem 宽；竖排 .83+1.2+2.88+1.2+1.33
+    v3: { w: 10.30, h: 7.54 }    // 宽度由【天气栏】10.3rem 决定（比环盒 9.42 还宽）；
+  };                             //   竖排 .5+.83+1+2.88+1+1.33
+  var FIT = 0.94;                // 内容最多占屏幕的 94%，四周留边距
+
   function layout() {
     var w = window.innerWidth, h = window.innerHeight;
-    var isV3 = (settings.style === 'v3');
-    var k  = (settings.style === 'v1') ? 0.058 : (isV3 ? 0.086 : 0.067);
+    var st = settings.style, isV3 = (st === 'v3');
+    var k  = (st === 'v1') ? 0.058 : (isV3 ? 0.086 : 0.067);
     var kh = isV3 ? 0.112 : 0.098;
-    var size = Math.min(w * k, h * kh);
+
+    var size = Math.min(w * k, h * kh) * (settings.sizeMul[st] || 1);
+
+    /* 硬上限：用户把倍率调大时，不能让内容顶出屏幕。
+       三套样式的余量差别很大 —— 现有观感下 v1/v2 只占上限的约 80%，
+       而 v3 已经吃到 92%。所以：
+         v1 / v2 能一路调到 120%
+         v3 大约到 108% 就被夹住
+       ⚠️ 这是【刻意】的，不是倍率失灵。夹取放在 layout() 而不是放进步进器的
+          可选范围里，是因为上限随【横竖屏】变化（竖屏更宽裕），
+          而倍率是全局设置 —— 放步进器里一旋转就被绕过去了。 */
+    var fp = FOOTPRINT[st];
+    var ceil = Math.min(w * FIT / fp.w, h * FIT / fp.h);
+    if (size > ceil) { size = ceil; }
+
     document.documentElement.style.fontSize = size + 'px';
   }
 
@@ -1515,15 +1685,25 @@ body.h12 .ampm { display:block; }
   bindTap(gearEl, function () { togglePanel(); });
 
   // 面板内的按钮：事件委托，从 e.target 往上爬到带 data-v 的按钮
+  /* 面板内所有点击共用这一个委托，按属性分三路：
+       data-tab  → 分页标签
+       data-step → 步进器 − / +
+       data-v    → 分段按钮（外层 .seg 的 data-k 指明改哪一项） */
   bindTap(panelEl, function (e) {
     var n = e.target;
     while (n && n !== panelEl) {
-      var v = n.getAttribute ? n.getAttribute('data-v') : null;
-      if (v) {
-        var seg = n.parentNode;
-        var k = (seg && seg.getAttribute) ? seg.getAttribute('data-k') : null;
-        if (k) { setSetting(k, v); }
-        break;
+      if (n.getAttribute) {
+        var tab  = n.getAttribute('data-tab');
+        var step = n.getAttribute('data-step');
+        var v    = n.getAttribute('data-v');
+        if (tab)  { showPage(tab);  break; }
+        if (step) { bumpSize(step); break; }
+        if (v) {
+          var seg = n.parentNode;
+          var k = (seg && seg.getAttribute) ? seg.getAttribute('data-k') : null;
+          if (k) { setSetting(k, v); }
+          break;
+        }
       }
       n = n.parentNode;
     }
@@ -1554,7 +1734,8 @@ body.h12 .ampm { display:block; }
   /* ================= 启动 ================= */
   loadSettings();
   applySettings();          // 内部依次做 layout() / initRing() / syncSegs() / tick()
-  scheduleTick();   // 对齐整秒触发（不是固定 250ms 轮询 —— 那会让秒显示滞后）
+  showPage(curPage);   // 初始化分页高亮（HTML 里只有页面带 .on，标签没带）
+  scheduleTick();      // 对齐整秒触发（不是固定 250ms 轮询 —— 那会让秒显示滞后）
   // 走秒带不在这里起 —— 它由 applySettings() 按当前样式 start/stop
 
   fetchWeather();
