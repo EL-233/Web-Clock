@@ -185,9 +185,14 @@ html, body {
   margin-bottom:1.2rem;
 }
 
+/* ⚠️ 这一栏的高度是 v3 走秒样式的【竖向主导量】（见下面 style-v3 那段的推导）。
+   以后要往天气栏【加行】（更多天气信息），高度必须跟着长，
+   而 v3 的 padding-top 和 JS 里的 FOOTPRINT 也要同步重算 —— 三处是一套的。
+   （宽度方向同理但更敏感：v3 的缩放上限由【天气栏 10.3rem】决定，
+     它比环盒 9.42rem 还宽。往横里加栏位会直接压小时钟。） */
 .bar--weather {
-  height:1.33rem;
-  line-height:1.33rem;
+  height:1.22rem;
+  line-height:1.22rem;
   margin-top:1.2rem;
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
@@ -218,17 +223,17 @@ body.style-v3 .ring { display:block; }
 
 /* v3 把竖向占位收紧，好让卡组能放大。
    它是【高度受限】的：宽度方向允许 R≈92，高度方向只到 75。
-   收紧后竖排从 8.1rem 降到 7.7rem，R 就能从 75.3 提到 86，卡组大约大 14%。
+   收紧后竖排从 8.1rem 降到 6.93rem，R 就能从 75.3 提到 86，卡组大约大 14%。
    环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
-/* v3 让【时钟】落在屏幕正中，而不是让「日期+时钟+天气」整组落在正中。
-   （整组居中的话，时钟会被顶到中心上方 —— 那正是"偏高"的来源。）
-   推导，竖排自上而下：
-     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.33   合计 7.04rem
+/* v3 的竖向定位 = 【整组居中】，padding-top 归零。
+   不额外下推，时钟就自然落在屏幕中心【上方】—— 因为时钟下方比上方多一栏天气：
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.22   合计 6.93rem
      时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
-     组半高 = 7.04/2 = 3.52rem  →  时钟比组中心高 .25rem
-   padding-top 会把内容下推 P/2，所以 P = 2 × .25 = .50rem。
-   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算。 */
-body.style-v3 .stage        { padding-top:.50rem; padding-bottom:0; }
+     组半高 = 6.93/2 = 3.465rem  →  时钟比组中心高 .195rem
+   即：不写任何 padding，时钟就比屏幕正中高 .195rem（横屏 ≈17px / 竖屏 ≈13px）。
+   这正是要的"时间和日期略往上"。
+   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。 */
+body.style-v3 .stage        { padding-top:0; padding-bottom:0; }
 body.style-v3 .bar--date    { margin-bottom:1rem; }
 body.style-v3 .bar--weather { margin-top:1rem; }
 
@@ -272,6 +277,11 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 .wx-main {
   width:4.0rem;   /* 4.5 → 4.0：给"未来1小时"腾位置。最坏"晴间多云 30°"仍只占 86% */
   text-align:center;
+  /* ⚠️ 字号必须写在这里，不能改上面 .bar 的 .54rem ——
+     .bar 同时管着【日期栏】，动它日期也会跟着缩。
+     这里 .54 → .48（天气整体小一号），仍比右两栏的 .40 大，保住"当前温度最突出"的层级。
+     4.0rem 定宽不变：留出的余量就是以后加天气信息的地方。 */
+  font-size:.48rem;
 }
 
 /* 右栏：今日最高 / 最低，上下堆叠 */
@@ -281,8 +291,8 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.44rem;               /* 比当前温度小一档，突出当前值 */
-  line-height:.58rem;
+  font-size:.40rem;               /* 比当前温度小一档，突出当前值（随天气整栏一起小了一号） */
+  line-height:.52rem;
   letter-spacing:.02em;
 }
 .wx-hi, .wx-lo {
@@ -300,8 +310,8 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.44rem;
-  line-height:.58rem;
+  font-size:.40rem;
+  line-height:.52rem;
   letter-spacing:.02em;
 }
 .wx-n1 { text-align:center; white-space:nowrap; }
@@ -320,21 +330,23 @@ body.light .wx-next .tag { color:#b0b0b0; }
    ⚠️ 刻意【不用水滴】：水滴会被读成"湿度"，而这里表达的是"降雨概率"。
       斜线是天气图标里表达"下"的通用画法，不会跟湿度混。
    三道线用一个元素 + 两个伪元素凑出来，省得多写 DOM。 */
+/* 尺寸跟着天气右两栏的字号一起缩（.44 → .40 同比例），
+   否则字号小了图标会显得发胖。三道线 .05 宽、左端 0/.125/.25，正好铺满 .30。 */
 .rain {
   position:relative;
   display:inline-block;
-  width:.32rem; height:.22rem;
+  width:.30rem; height:.20rem;
   margin-right:.1rem;
 }
 .rain::before, .rain::after, .rain i {
   position:absolute; top:0;
-  width:.05rem; height:.22rem;
+  width:.05rem; height:.20rem;
   background:#4d9fff;                                  /* 与低温箭头同一支蓝，保持配色一致 */
   -webkit-transform:rotate(18deg); transform:rotate(18deg);   /* 斜着才像"下" */
 }
 .rain::before { content:''; left:0; }
-.rain i       { left:.135rem; }
-.rain::after  { content:''; left:.27rem; }
+.rain i       { left:.125rem; }
+.rain::after  { content:''; left:.25rem; }
 body.light .rain::before,
 body.light .rain::after,
 body.light .rain i { background:#2f7fd4; }
@@ -345,12 +357,12 @@ body.light .rain i { background:#2f7fd4; }
 .arw {
   display:inline-block;
   width:0; height:0;
-  margin-right:.14rem;
-  border-left:.09rem solid transparent;
-  border-right:.09rem solid transparent;
+  margin-right:.13rem;
+  border-left:.08rem solid transparent;
+  border-right:.08rem solid transparent;
 }
-.arw-up { border-bottom:.13rem solid #ff5c5c; }   /* 红 = 高温 */
-.arw-dn { border-top:.13rem solid #4d9fff; }      /* 蓝 = 低温 */
+.arw-up { border-bottom:.12rem solid #ff5c5c; }   /* 红 = 高温 */
+.arw-dn { border-top:.12rem solid #4d9fff; }      /* 蓝 = 低温 */
 
 /* ============================================================
    卡片
@@ -1122,9 +1134,10 @@ body.h12 .ampm { display:block; }
      全站尺寸用 rem，根字号按屏幕算，横竖屏自动适配。
 
      三套样式的占位不同，系数必须分别取：
-       v1 平衡  卡组 13.68rem 宽 | 竖排 8.6rem
-       v2 层次  卡组 11.63rem 宽 | 竖排 8.1rem
-       v3 走秒  环盒  9.76rem 宽 | 竖排 7.7rem（间距被 CSS 收紧了）
+       v1 平衡  卡组 13.08rem 宽 | 竖排 8.38rem
+       v2 层次  卡组 11.18rem 宽 | 竖排 7.33rem
+       v3 走秒  环盒  9.42rem 宽 | 竖排 6.93rem（间距被 CSS 收紧了）
+       （这三个数必须与下面的 FOOTPRINT 一致 —— 它们是同一组事实的两种写法。）
      用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
      分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
      而且这样每套都能撑满屏幕。反过来若统一按最宽的 v1 取值，v2 会被迫缩小 12%。
@@ -1136,9 +1149,9 @@ body.h12 .ampm { display:block; }
      卡组/环盒宽、竖排总高 —— 都是已知常量，见各自的 CSS 注释。 */
   var FOOTPRINT = {
     v1: { w: 13.08, h: 8.38 },   // 卡组 13.08rem 宽；竖排 1.4+1.35+2.88+1.35+1.4
-    v2: { w: 11.18, h: 7.44 },   // 卡组 11.18rem 宽；竖排 .83+1.2+2.88+1.2+1.33
-    v3: { w: 10.30, h: 7.54 }    // 宽度由【天气栏】10.3rem 决定（比环盒 9.42 还宽）；
-  };                             //   竖排 .5+.83+1+2.88+1+1.33
+    v2: { w: 11.18, h: 7.33 },   // 卡组 11.18rem 宽；竖排 .83+1.2+2.88+1.2+1.22
+    v3: { w: 10.30, h: 6.93 }    // 宽度由【天气栏】10.3rem 决定（比环盒 9.42 还宽）；
+  };                             //   竖排 .83+1+2.88+1+1.22（padding-top 已归零）
   var FIT = 0.94;                // 内容最多占屏幕的 94%，四周留边距
 
   function layout() {
