@@ -564,6 +564,10 @@ body.light .colon i     { background:#5c5c5c; }
 /* 自动主题开着时，把"主题"那一行压暗 —— 它此刻由日出日落接管、不由按钮决定。
    按钮仍然可点（点一下就自动关掉自动主题并采用你选的那个），只是视觉上退让。 */
 body.auto-theme .panel .seg[data-k="theme"] { opacity:.4; }
+/* 「走带时长」只在【脉冲】模式下有意义 —— 连续模式没有缓动窗口，关闭模式没有环。
+   另外两种模式下把这行压暗，和"自动主题接管时压暗主题行"是同一套做法。
+   仍然可调（调到脉冲时立刻生效），只是视觉上说明"现在这项不生效"。 */
+body.ring-idle .panel .step[data-k="ringMs"] { opacity:.4; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.16); }
@@ -667,7 +671,9 @@ body.h12 .ampm { display:block; }
 .panel .tabs button.on { background:#2e2e2e; color:#fff; }
 
 /* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
-.panel .page      { display:none; min-height:102px; }   /* = 3 行 × 34 */
+.panel .page      { display:none; min-height:136px; }   /* = 4 行 × 34
+   ⚠️ 这个 min-height 取【最长那一页】的行数】，三页就都等高 —— 切标签页面板不跳高度。
+      往任意一页加行数超过它时，这里要跟着加，否则那页会比别的页高。 */
 .panel .page.on   { display:block; }
 
 .panel .row {
@@ -907,6 +913,19 @@ body.h12 .ampm { display:block; }
         <button type="button" data-v="pulse">脉冲</button>
       </span>
     </div>
+    <!-- 走带时长 = 脉冲那一格走完要多久，也就是"松紧"：
+         越短越紧绷（干脆、有弹性），越长越松弛（从容、绵软）。
+         只在脉冲模式下生效，另两种模式下这一行会变暗（见上面 ring-idle 那条）。
+         ⚠️ 上限 600ms 不是随便定的：缓动段必须整个落在【一秒之内】（原因见 ringSeconds），
+            逼近 1000ms 就没有停顿了，脉冲会退化成"连续但非线性"。 -->
+    <div class="row">
+      <span class="lbl">走带时长</span>
+      <span class="step" data-k="ringMs">
+        <button type="button" data-step="-">−</button>
+        <span id="ring-ms-val">360ms</span>
+        <button type="button" data-step="+">+</button>
+      </span>
+    </div>
   </div>
 
   <!-- ── 天气 ── -->
@@ -986,6 +1005,7 @@ body.h12 .ampm { display:block; }
   var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true,
                     dataSrc:'live',                                   // live | demo | offline
                     ringMode:'cont',                                  // off | cont | pulse（走秒样式的走带）
+                    ringMs:360,                                       // 脉冲那一格走完要多久 = "松紧"
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
@@ -996,6 +1016,23 @@ body.h12 .ampm { display:block; }
     if (v < SIZE_MIN) { return SIZE_MIN; }
     if (v > SIZE_MAX) { return SIZE_MAX; }
     return Math.round(v * 100) / 100;     // 消掉浮点累加误差，否则会出来 0.9500000001
+  }
+
+  /* 走带脉冲的"松紧" = 那一格走完要多久（毫秒）。
+     短 = 紧绷（干脆、有弹性）／长 = 松弛（从容、绵软）。
+     1000ms 是【硬上限】—— 缓动段必须整个落在一秒之内（原因见 ringSeconds），
+     逼近 1000 就没有停顿了，脉冲会退化成"连续但非线性"。所以封在 600。
+     下限 150：再短就不是"快"而是"闪"了（180 是用户当初嫌"生硬"的那一档）。 */
+  var RING_MS_MIN = 150, RING_MS_MAX = 600, RING_MS_STEP = 30;
+  var RING_MS_DEF = 360;   // ⚠️ 必须与上面 settings 字面量里的 ringMs 默认值一致
+                           //    （settings 写在更前面，引用不到这个常量）
+
+  function clampRingMs(v) {
+    if (typeof v !== 'number' || isNaN(v)) { return RING_MS_DEF; }
+    if (v < RING_MS_MIN) { return RING_MS_MIN; }
+    if (v > RING_MS_MAX) { return RING_MS_MAX; }
+    // 归到步进网格（150 + n×30）上：手改过的 localStorage 会让步进器一路走偏
+    return RING_MS_MIN + Math.round((v - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
   }
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
@@ -1029,6 +1066,7 @@ body.h12 .ampm { display:block; }
       if (o.ringMode === 'off' || o.ringMode === 'cont' || o.ringMode === 'pulse') {
         settings.ringMode = o.ringMode;
       }
+      settings.ringMs = clampRingMs(o.ringMs);   // clamp 自己会把脏值/缺失退回默认
       if (o.sizeMul && typeof o.sizeMul === 'object') {
         settings.sizeMul.v1 = clampMul(o.sizeMul.v1);
         settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
@@ -1086,21 +1124,31 @@ body.h12 .ampm { display:block; }
   }
 
   /* ── 步进器 ──
-     改的是【当前选中样式】的倍率，每套样式各记各的。 */
-  function bumpSize(dir) {
+     两个：「大小」（改当前样式的倍率，每套样式各记各的）和「走带时长」（松紧）。 */
+  function bumpStep(k, dir) {
+    var d = (dir === '-') ? -1 : 1;
+    if (k === 'ringMs') {
+      settings.ringMs = clampRingMs(settings.ringMs + d * RING_MS_STEP);
+      saveSettings();
+      syncSteps();
+      // 不用重建任何东西：ringSeconds() 每帧现读 settings.ringMs，
+      // 帧循环本来就在跑（脉冲模式下必然在跑）。
+      return;
+    }
     var st = settings.style;
-    var v  = settings.sizeMul[st] + (dir === '-' ? -SIZE_STEP : SIZE_STEP);
-    settings.sizeMul[st] = clampMul(v);
+    settings.sizeMul[st] = clampMul(settings.sizeMul[st] + d * SIZE_STEP);
     saveSettings();
-    syncStep();
+    syncSteps();
     layout();          // 只影响根字号，不必走整条 applySettings()
   }
 
-  /* 把步进器的显示值刷成"当前样式"的倍率 */
-  function syncStep() {
+  /* 把两个步进器的显示值都刷一遍。
+     "大小"显示的是【当前样式】的倍率，所以换样式也要调它。 */
+  function syncSteps() {
     var el = document.getElementById('size-val');
-    if (!el) { return; }
-    setText(el, Math.round(settings.sizeMul[settings.style] * 100) + '%');
+    if (el) { setText(el, Math.round(settings.sizeMul[settings.style] * 100) + '%'); }
+    var el2 = document.getElementById('ring-ms-val');
+    if (el2) { setText(el2, Math.round(settings.ringMs) + 'ms'); }
   }
 
   /* 把设置落到 DOM。三处：
@@ -1117,6 +1165,7 @@ body.h12 .ampm { display:block; }
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
     setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
     setClass(bodyEl, 'ring-off', settings.ringMode === 'off'); // 走带开关（只对走秒样式有意义）
+    setClass(bodyEl, 'ring-idle', settings.ringMode !== 'pulse'); // 把"走带时长"那行压暗（只在脉冲下生效）
     setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
@@ -1129,7 +1178,7 @@ body.h12 .ampm { display:block; }
       stopRing();
     }
     syncSegs();
-    syncStep();   // 步进器显示的是"当前样式"的倍率，换样式要跟着刷
+    syncSteps();  // "大小"显示的是【当前样式】的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
   }
 
@@ -1378,10 +1427,11 @@ body.h12 .ampm { display:block; }
        全程约 71% 的位移在前 1/3 窗口内走完（减速型 = 前重后轻）。
        对比 smoothstep：速度是对称的「0 → 峰值(正中) → 0」，机械感更重。
 
-     窗口 0.36 秒：微软的时长档位是 83 / 167 / 250 / 333 ms，取最长的 333ms 一档
-       （走带一格的位移比 UI 控件大，配长档）。0.36 ≈ 333ms。
-       想更灵动就往 0.45 调，想更干脆就往 0.25 调；拉过 0.5 就不像"一格一格"了。 */
-  var RING_RAMP = 0.36;
+     窗口长度不再是写死的常量了 —— 它是【设置项 settings.ringMs】，用户可调
+       （150–600ms，见 clampRingMs）。默认 360ms：
+       微软的时长档位是 83 / 167 / 250 / 333 ms，取最长的 333ms 一档
+       （走带一格的位移比 UI 控件大，配长档）。360 ≈ 333ms。
+       这就是"松紧"：短 = 紧绷干脆，长 = 松弛绵软。 */
   var RING_BZ   = { x1: 0.55, y1: 0.55, x2: 0, y2: 1 };
 
   /* 三次贝塞尔的单轴求值。CSS 的 cubic-bezier 固定 P0=(0,0)、P3=(1,1)，
@@ -1432,8 +1482,9 @@ body.h12 .ampm { display:block; }
   function ringSeconds(sec) {
     if (settings.ringMode !== 'pulse') { return sec; }        // 连续模式：原样返回
     var n = Math.floor(sec), f = sec - n;
-    if (f >= RING_RAMP) { return n + 1; }                     // 窗口之后：已就位，停住
-    return n + bezierY(f / RING_RAMP, RING_BZ);               // 整秒起 0.36 秒内走完一格
+    var w = settings.ringMs / 1000;                           // 窗口 = "松紧"设置，每帧现读
+    if (f >= w) { return n + 1; }                             // 窗口之后：已就位，停住
+    return n + bezierY(f / w, RING_BZ);                       // 整秒起 w 秒内走完一格
   }
 
   var colonEl   = document.getElementById('colon');    // 时∣分
@@ -1824,7 +1875,13 @@ body.h12 .ampm { display:block; }
         var step = n.getAttribute('data-step');
         var v    = n.getAttribute('data-v');
         if (tab)  { showPage(tab);  break; }
-        if (step) { bumpSize(step); break; }
+        if (step) {
+          // 两个步进器的加减按钮长得一样，要看父元素（.step）的 data-k 才知道改哪个
+          var stp = n.parentNode;
+          var sk  = (stp && stp.getAttribute) ? stp.getAttribute('data-k') : null;
+          bumpStep(sk, step);
+          break;
+        }
         if (v) {
           var seg = n.parentNode;
           var k = (seg && seg.getAttribute) ? seg.getAttribute('data-k') : null;
