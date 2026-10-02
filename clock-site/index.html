@@ -564,10 +564,9 @@ body.light .colon i     { background:#5c5c5c; }
 /* 自动主题开着时，把"主题"那一行压暗 —— 它此刻由日出日落接管、不由按钮决定。
    按钮仍然可点（点一下就自动关掉自动主题并采用你选的那个），只是视觉上退让。 */
 body.auto-theme .panel .seg[data-k="theme"] { opacity:.4; }
-/* 「走带时长」只在【脉冲】模式下有意义 —— 连续模式没有缓动窗口，关闭模式没有环。
-   另外两种模式下把这行压暗，和"自动主题接管时压暗主题行"是同一套做法。
-   仍然可调（调到脉冲时立刻生效），只是视觉上说明"现在这项不生效"。 */
-body.ring-idle .panel .row[data-k="ringMs"] { opacity:.4; }
+/* 注：曾经有一条 body.ring-idle 用来压暗"走带时长"行 ——
+   那时模式和时长是两个控件，模式不是脉冲时时长就没意义。
+   现在【滑杆本身就是模式选择器】（左端关、右端连续），这一行永远有意义，故删除。 */
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.16); }
@@ -671,8 +670,8 @@ body.h12 .ampm { display:block; }
 .panel .tabs button.on { background:#2e2e2e; color:#fff; }
 
 /* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
-.panel .page      { display:none; min-height:136px; }   /* = 4 行 × 34
-   ⚠️ 这个 min-height 取【最长那一页】的行数】，三页就都等高 —— 切标签页面板不跳高度。
+.panel .page      { display:none; min-height:102px; }   /* = 3 行 × 34
+   ⚠️ 这个 min-height 取【最长那一页】的行数，三页就都等高 —— 切标签页面板不跳高度。
       往任意一页加行数超过它时，这里要跟着加，否则那页会比别的页高。 */
 .panel .page.on   { display:block; }
 
@@ -936,26 +935,21 @@ body.h12 .ampm { display:block; }
         <button type="button" data-v="0">关</button>
       </span>
     </div>
-    <!-- 走带（走秒样式外圈那条环）也归「时间」，理由同上：它和冒号是同一类东西
-         —— 都是【秒的指示器】。只有走秒样式有这条环，其它样式下这一行不生效。
-         三个选项让它落在 3 行，正好与「外观」页等高 —— 切标签页时面板高度不变。 -->
-    <div class="row">
-      <span class="lbl">走带</span>
-      <span class="seg" data-k="ringMode">
-        <button type="button" data-v="off">关</button>
-        <button type="button" data-v="cont">连续</button>
-        <button type="button" data-v="pulse">脉冲</button>
-      </span>
-    </div>
-    <!-- 松紧 = 脉冲那一格走完要多久。左端 ≈ 瞬切，右端 ≈ 匀速（= 连续）。
-         滑杆同时改【时长】和【曲线】两样，理由见 ringSeconds 上面那段。
-         只在脉冲模式下生效，另两种模式下这一行会变暗（见上面 ring-idle 那条）。
-         ⚠️ 不要换成定值步进器 —— 这个轴跨了两个数量级（60→1000ms），
-            按固定毫秒步进的话，紧绷端会挤成一坨。滑杆位置走的是几何映射。 -->
+    <!-- 走带（走秒样式外圈那条环）归「时间」：它和冒号是同一类东西 —— 都是【秒的指示器】。
+         只有走秒样式有这条环，其它样式下这一行不生效。
+
+         ⚠️ 这一行【同时是模式选择器和时长调节】，所以原来那行「走带 关|连续|脉冲」
+            的 seg 被删掉了（省掉一个设置项，时间页也从 4 行回到 3 行）。
+             最左 = 关（哨兵值 0）
+             中间 = 脉冲，值是"那一格走完要多久"，步进 20ms
+             最右 = 连续（1000ms —— 恰好就是连续，不是近似，见 ringSeconds 的推导）
+            读数：关 / 刻度 / 40ms…980ms / 连续（见 ringLabel）
+
+         滑杆同时改【时长】和【曲线】两样，理由见 ringSeconds 上面那段。 -->
     <div class="row" data-k="ringMs">
       <span class="lbl">松紧</span>
       <input class="rng" type="range" id="ring-range"
-             min="60" max="1000" step="20" value="360">
+             min="0" max="1000" step="20" value="360">
       <span class="val" id="ring-ms-val">360ms</span>
     </div>
   </div>
@@ -1036,8 +1030,12 @@ body.h12 .ampm { display:block; }
   var STORE_KEY = 'clockSettings';
   var settings  = { h12:false, theme:'dark', style:'v2', colon:true, autoTheme:true,
                     dataSrc:'live',                                   // live | demo | offline
-                    ringMode:'cont',                                  // off | cont | pulse（走秒样式的走带）
-                    ringMs:360,                                       // 脉冲那一格走完要多久 = "松紧"
+                    // 走带（只对走秒样式有意义）。【一个数就是全部】：
+                    //   0        = 关
+                    //   20…980   = 脉冲，值是"那一格走完要多久"（毫秒）
+                    //   1000     = 连续（1000ms 恰好等于连续，见 ringSeconds）
+                    // 曾经还有独立的 ringMode 设置项，现在由这个数唯一决定，已删除。
+                    ringMs:360,
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
@@ -1050,33 +1048,47 @@ body.h12 .ampm { display:block; }
     return Math.round(v * 100) / 100;     // 消掉浮点累加误差，否则会出来 0.9500000001
   }
 
-  /* 走带脉冲的"松紧" = 那一格走完要多久（毫秒）。
-     短 = 紧绷（干脆、有弹性）／长 = 松弛（从容、绵软）。
+  /* 走带（只对走秒样式有意义）—— 【一个数就是全部】：settings.ringMs
+       0        = 关
+       20…980   = 脉冲，值是"那一格走完要多久"（毫秒）。短 = 紧绷，长 = 松弛
+       1000     = 连续
+     曾经还有独立的 ringMode 设置项（off/cont/pulse），现在由这个数唯一决定，已删除。
 
      ⚠️ 上端 1000ms 是【硬上限】：缓动段必须整个落在一秒之内（原因见 ringSeconds）。
         到了 1000ms 就没有停顿时段了，而且曲线也完全拉平成线性 ——
         于是"脉冲"平滑地【变成"连续"】。这不是巧合：两者本来就是同一根轴的两端。
-     下端 60ms ≈ 4 帧，已经是"瞬切"而不是"动画"了。 */
-  var RING_MS_MIN = 60, RING_MS_MAX = 1000;
-  var RING_MS_STEP = 20;   // 滑杆每格的时长。滑杆【直接以毫秒为单位】（min/max/step
-                           // 就是这三个数），不做任何坐标映射 —— 见下面的说明。
+     下端 20ms ≈ 1.2 帧，已经是"瞬切"而不是"动画"了（读数显示「刻度」）。
+        再往下没有意义 —— 一帧都跑不完的东西，调它只是在调"从哪一帧开始跳"。 */
+  var RING_MS_OFF = 0, RING_MS_MIN = 20, RING_MS_MAX = 1000;
+  var RING_MS_STEP = 20;   // 滑杆每格的时长。滑杆【直接以毫秒为单位】
+                           // （min/max/step 就是 0/1000/20），不做任何坐标映射。
   var RING_MS_DEF = 360;   // ⚠️ 必须与上面 settings 字面量里的 ringMs 默认值一致，
-                           //    也必须落在步进网格上（60 + 15×20 = 360 ✓）
+                           //    也必须落在步进网格上（20 + 17×20 = 360 ✓）
 
   /* ⚠️ 为什么滑杆不做几何映射（v4.6 用过，v4.7 撤掉）：
      几何映射下每一格改的时长是【变动的】—— 紧绷端一格只有约 1.7ms，
      手指拖过去几乎看不出变化；松弛端一格却有约 29ms。
      实测反馈就是"很难细调、易拉性等于没改"。
-     改成固定 20ms 后每格改的量一样，紧绷端也终于拖得动了。
-     代价是失去了"对数均匀"的手感 —— 但 20ms 这个粒度已经够细
-     （60→1000 共 48 格，且两端正好落在格上）。 */
+     改成固定 20ms 后每格改的量一样，紧绷端也终于拖得动了。 */
   function clampRingMs(v) {
     if (typeof v !== 'number' || isNaN(v)) { return RING_MS_DEF; }
-    if (v < RING_MS_MIN) { return RING_MS_MIN; }
-    if (v > RING_MS_MAX) { return RING_MS_MAX; }
-    // 归到步进网格（60 + n×20）—— 与滑杆的 step 保持一致，
-    // 手改过的 localStorage 也不会让滑块停在两格之间
+    if (v <= RING_MS_OFF) { return RING_MS_OFF; }     // 0 是"关"的哨兵，别让负数或 0 落到下面去
+    if (v >= RING_MS_MAX) { return RING_MS_MAX; }
+    // 归到步进网格（20 + n×20）—— 与滑杆 step 一致；顺带把 (0,20) 之间的值
+    // 折到 0 或 20 上（v<10 归 0，≥10 归 20），滑块不会停在两格之间
     return RING_MS_MIN + Math.round((v - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
+  }
+
+  /* 松紧滑杆的读数。两端显示【词】而不是数字 ——
+     那两档本来就不是"多少毫秒"能说清的，它们各是一个状态：
+       最左 = 关（环整条不画）
+       最右 = 连续（和"连续"模式逐点相同）
+     「刻度」是最快那一档的名字：到这一档，动作已经短到只剩一格刻度的观感。 */
+  function ringLabel(ms) {
+    if (ms <= RING_MS_OFF)    { return '关'; }
+    if (ms >= RING_MS_MAX)    { return '连续'; }
+    if (ms <= RING_MS_MIN)    { return '刻度'; }
+    return ms + 'ms';
   }
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
@@ -1107,10 +1119,12 @@ body.h12 .ampm { display:block; }
       if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
         settings.dataSrc = o.dataSrc;
       }
-      if (o.ringMode === 'off' || o.ringMode === 'cont' || o.ringMode === 'pulse') {
-        settings.ringMode = o.ringMode;
-      }
       settings.ringMs = clampRingMs(o.ringMs);   // clamp 自己会把脏值/缺失退回默认
+      // 旧存档迁移：v4.7 及以前把"关/连续"存在独立的 ringMode 里。
+      // 现在它们由 ringMs 的两个哨兵值表示，所以把旧值翻译过来 ——
+      // 否则旧的"已关闭"会被读成默认的 360ms（环又冒出来）。
+      if (o.ringMode === 'off')  { settings.ringMs = RING_MS_OFF; }
+      if (o.ringMode === 'cont') { settings.ringMs = RING_MS_MAX; }
       if (o.sizeMul && typeof o.sizeMul === 'object') {
         settings.sizeMul.v1 = clampMul(o.sizeMul.v1);
         settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
@@ -1140,7 +1154,6 @@ body.h12 .ampm { display:block; }
                : (k === 'autoTheme')? (settings.autoTheme ? '1' : '0')
                : (k === 'dataSrc')  ? settings.dataSrc
                : (k === 'theme')    ? settings.theme
-               : (k === 'ringMode') ? settings.ringMode
                :                      settings.style;   // 兜底 = 卡片样式（那个 .seg 没有 data-k 分支）
       var btns = seg.getElementsByTagName('button');
       for (var j = 0; j < btns.length; j++) {
@@ -1189,7 +1202,7 @@ body.h12 .ampm { display:block; }
     var rng = document.getElementById('ring-range');
     if (rng) { rng.value = ms; }              // 只在整刷时写滑杆
     var el2 = document.getElementById('ring-ms-val');
-    if (el2) { setText(el2, ms + 'ms'); }
+    if (el2) { setText(el2, ringLabel(ms)); }
   }
 
   /* 把设置落到 DOM。三处：
@@ -1205,15 +1218,14 @@ body.h12 .ampm { display:block; }
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
     setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
-    setClass(bodyEl, 'ring-off', settings.ringMode === 'off'); // 走带开关（只对走秒样式有意义）
-    setClass(bodyEl, 'ring-idle', settings.ringMode !== 'pulse'); // 把"走带时长"那行压暗（只在脉冲下生效）
+    setClass(bodyEl, 'ring-off', settings.ringMs <= RING_MS_OFF);  // 走带开关 = 滑杆最左
     setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
     // 环要「v3 且没关掉」；冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环。
     // 两个都关掉时整条帧循环停掉：这是这台设备唯一持续烧 CPU 的地方，能停就停。
-    if ((settings.style === 'v3' && settings.ringMode !== 'off') || settings.colon) {
+    if ((settings.style === 'v3' && settings.ringMs > RING_MS_OFF) || settings.colon) {
       startRing();
     } else {
       stopRing();
@@ -1233,7 +1245,6 @@ body.h12 .ampm { display:block; }
     }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
     if (k === 'colon') { settings.colon = (v === '1'); }
-    if (k === 'ringMode') { settings.ringMode = (v === 'off' || v === 'pulse') ? v : 'cont'; }
     if (k === 'autoTheme') {
       settings.autoTheme = (v === '1');
       lastDayState = null;      // 重新打开时立刻按当前昼夜状态套用一次
@@ -1547,7 +1558,7 @@ body.h12 .ampm { display:block; }
         整分时表现为"满圈停住 → 闪一下 → 归零"。
         可以接受 —— 环本来就只是"暗示"，与冒号对齐比绝对精确更重要。 */
   function ringSeconds(sec) {
-    if (settings.ringMode !== 'pulse') { return sec; }        // 连续模式：原样返回
+    if (settings.ringMs <= RING_MS_OFF) { return sec; }       // 关掉时不该走到这里，兜底原样返回
     var n = Math.floor(sec), f = sec - n;
 
     var ms = clampRingMs(settings.ringMs);                    // "松紧"，每帧现读
@@ -1587,7 +1598,7 @@ body.h12 .ampm { display:block; }
   function updateRing() {
     if (!ringFill) { return; }
     // 环要「v3 且没关掉」；冒号呼吸三种样式都要。两者都不需要、又没有正在播的淡出，就直接返回。
-    var ringOn  = (settings.style === 'v3' && settings.ringMode !== 'off');
+    var ringOn  = (settings.style === 'v3' && settings.ringMs > RING_MS_OFF);
     var colonOn = settings.colon;
     if (!ringOn && !colonOn && !flashT0) { return; }
 
@@ -1977,7 +1988,7 @@ body.h12 .ampm { display:block; }
       // 只刷读数，不写回 ringRange.value ——
       // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）
       var el = document.getElementById('ring-ms-val');
-      if (el) { setText(el, settings.ringMs + 'ms'); }
+      if (el) { setText(el, ringLabel(settings.ringMs)); }
       armAutoHide();     // 拖动期间别让面板 15 秒自动收起
     };
     // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
