@@ -954,7 +954,8 @@ body.h12 .ampm { display:block; }
             按固定毫秒步进的话，紧绷端会挤成一坨。滑杆位置走的是几何映射。 -->
     <div class="row" data-k="ringMs">
       <span class="lbl">松紧</span>
-      <input class="rng" type="range" id="ring-range" min="0" max="100" step="1" value="64">
+      <input class="rng" type="range" id="ring-range"
+             min="60" max="1000" step="20" value="360">
       <span class="val" id="ring-ms-val">360ms</span>
     </div>
   </div>
@@ -1057,28 +1058,25 @@ body.h12 .ampm { display:block; }
         于是"脉冲"平滑地【变成"连续"】。这不是巧合：两者本来就是同一根轴的两端。
      下端 60ms ≈ 4 帧，已经是"瞬切"而不是"动画"了。 */
   var RING_MS_MIN = 60, RING_MS_MAX = 1000;
-  var RING_MS_DEF = 360;   // ⚠️ 必须与上面 settings 字面量里的 ringMs 默认值一致
-                           //    （settings 写在更前面，引用不到这个常量）
+  var RING_MS_STEP = 20;   // 滑杆每格的时长。滑杆【直接以毫秒为单位】（min/max/step
+                           // 就是这三个数），不做任何坐标映射 —— 见下面的说明。
+  var RING_MS_DEF = 360;   // ⚠️ 必须与上面 settings 字面量里的 ringMs 默认值一致，
+                           //    也必须落在步进网格上（60 + 15×20 = 360 ✓）
 
+  /* ⚠️ 为什么滑杆不做几何映射（v4.6 用过，v4.7 撤掉）：
+     几何映射下每一格改的时长是【变动的】—— 紧绷端一格只有约 1.7ms，
+     手指拖过去几乎看不出变化；松弛端一格却有约 29ms。
+     实测反馈就是"很难细调、易拉性等于没改"。
+     改成固定 20ms 后每格改的量一样，紧绷端也终于拖得动了。
+     代价是失去了"对数均匀"的手感 —— 但 20ms 这个粒度已经够细
+     （60→1000 共 48 格，且两端正好落在格上）。 */
   function clampRingMs(v) {
     if (typeof v !== 'number' || isNaN(v)) { return RING_MS_DEF; }
     if (v < RING_MS_MIN) { return RING_MS_MIN; }
     if (v > RING_MS_MAX) { return RING_MS_MAX; }
-    return Math.round(v);
-  }
-
-  /* 滑杆位置（0..100）↔ 时长（ms）。用【几何】映射而不是线性：
-     人对时长的感知是对数的 —— 150→300ms 的变化量和 300→600ms 一样明显，
-     但后者在线性轴上要占两倍宽度。几何映射让每拖一格改的是固定【倍率】，
-     手感才均匀。副作用是 150ms 正好落在 1/3 处、360ms 落在 2/3 处，都好找。 */
-  var RING_RATIO = RING_MS_MAX / RING_MS_MIN;   // = 16.67
-
-  function ringMsToPos(ms) {
-    return Math.round(100 * Math.log(clampRingMs(ms) / RING_MS_MIN) / Math.log(RING_RATIO));
-  }
-  function ringPosToMs(pos) {
-    var t = (pos < 0 ? 0 : (pos > 100 ? 100 : pos)) / 100;
-    return Math.round(RING_MS_MIN * Math.pow(RING_RATIO, t));
+    // 归到步进网格（60 + n×20）—— 与滑杆的 step 保持一致，
+    // 手改过的 localStorage 也不会让滑块停在两格之间
+    return RING_MS_MIN + Math.round((v - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
   }
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
@@ -1187,11 +1185,11 @@ body.h12 .ampm { display:block; }
     var el = document.getElementById('size-val');
     if (el) { setText(el, Math.round(settings.sizeMul[settings.style] * 100) + '%'); }
 
-    var ms  = clampRingMs(settings.ringMs);
+    var ms  = clampRingMs(settings.ringMs);   // 已归到步进网格，可直接当滑杆的值用
     var rng = document.getElementById('ring-range');
-    if (rng) { rng.value = ringMsToPos(ms); }          // 只在整刷时写滑杆位置
+    if (rng) { rng.value = ms; }              // 只在整刷时写滑杆
     var el2 = document.getElementById('ring-ms-val');
-    if (el2) { setText(el2, Math.round(ms) + 'ms'); }
+    if (el2) { setText(el2, ms + 'ms'); }
   }
 
   /* 把设置落到 DOM。三处：
@@ -1974,12 +1972,12 @@ body.h12 .ampm { display:block; }
   var ringRange = document.getElementById('ring-range');
   if (ringRange && ringRange.addEventListener) {
     var onSlide = function (persist) {
-      settings.ringMs = ringPosToMs(parseInt(ringRange.value, 10));
+      settings.ringMs = clampRingMs(parseInt(ringRange.value, 10));  // 值本身就是毫秒
       if (persist) { saveSettings(); }
       // 只刷读数，不写回 ringRange.value ——
-      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差 1，滑块会跳）
+      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）
       var el = document.getElementById('ring-ms-val');
-      if (el) { setText(el, Math.round(settings.ringMs) + 'ms'); }
+      if (el) { setText(el, settings.ringMs + 'ms'); }
       armAutoHide();     // 拖动期间别让面板 15 秒自动收起
     };
     // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
