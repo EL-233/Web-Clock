@@ -947,7 +947,7 @@ body.h12 .ampm { display:block; }
 
          滑杆同时改【时长】和【曲线】两样，理由见 ringSeconds 上面那段。 -->
     <div class="row" data-k="ringMs">
-      <span class="lbl">松紧</span>
+      <span class="lbl">走带</span>
       <input class="rng" type="range" id="ring-range"
              min="0" max="1000" step="20" value="360">
       <span class="val" id="ring-ms-val">360ms</span>
@@ -1205,6 +1205,24 @@ body.h12 .ampm { display:block; }
     if (el2) { setText(el2, ringLabel(ms)); }
   }
 
+  /* 把走带的【状态】落一遍：开关类 + 帧循环。
+     从 applySettings 里抽出来，是因为【滑杆也要调它】——
+
+     ⚠️ v4.8 的 bug 就出在这里：拖动滑杆的处理函数只改了 settings.ringMs 和读数，
+        没落状态。于是滑杆拖到哪边都不生效；只有改别的设置（走 setSetting →
+        applySettings）才会把环救回来 —— 用户的实测正是"拖滑杆没用、
+        关掉再打开冒号就好了"。 */
+  function applyRingState() {
+    setClass(bodyEl, 'ring-off', settings.ringMs <= RING_MS_OFF);
+    // 环要「v3 且没关掉」；冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环。
+    // 两个都关掉时整条帧循环停掉：这是这台设备唯一持续烧 CPU 的地方，能停就停。
+    if ((settings.style === 'v3' && settings.ringMs > RING_MS_OFF) || settings.colon) {
+      startRing();
+    } else {
+      stopRing();
+    }
+  }
+
   /* 把设置落到 DOM。三处：
        body.h12      → AM/PM 显隐
        body.light    → 浅色主题的颜色覆盖
@@ -1218,18 +1236,12 @@ body.h12 .ampm { display:block; }
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
     setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
-    setClass(bodyEl, 'ring-off', settings.ringMs <= RING_MS_OFF);  // 走带开关 = 滑杆最左
+    // 走带的开关类不在这里设 —— 它在 applyRingState() 里，那个函数滑杆也要用（见下）
     setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
-    // 环要「v3 且没关掉」；冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环。
-    // 两个都关掉时整条帧循环停掉：这是这台设备唯一持续烧 CPU 的地方，能停就停。
-    if ((settings.style === 'v3' && settings.ringMs > RING_MS_OFF) || settings.colon) {
-      startRing();
-    } else {
-      stopRing();
-    }
+    applyRingState();   // ring-off 类 + 帧循环启停
     syncSegs();
     syncControls();  // "大小"显示的是【当前样式】的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
@@ -1989,6 +2001,9 @@ body.h12 .ampm { display:block; }
       // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）
       var el = document.getElementById('ring-ms-val');
       if (el) { setText(el, ringLabel(settings.ringMs)); }
+      // ⚠️ 别漏这一句：滑杆拖着拖着会跨过「关」这一档，开关类和帧循环都得跟着变。
+      //    漏掉它的后果见 applyRingState 上面的注释。
+      applyRingState();
       armAutoHide();     // 拖动期间别让面板 15 秒自动收起
     };
     // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
@@ -2022,7 +2037,17 @@ body.h12 .ampm { display:block; }
   applySettings();          // 内部依次做 layout() / initRing() / syncSegs() / tick()
   showPage(curPage);   // 初始化分页高亮（HTML 里只有页面带 .on，标签没带）
   scheduleTick();      // 对齐整秒触发（不是固定 250ms 轮询 —— 那会让秒显示滞后）
-  // 走秒带不在这里起 —— 它由 applySettings() 按当前样式 start/stop
+  // 走秒带不在这里起 —— 它由 applyRingState() 按当前样式和走带设置 start/stop
+
+  /* 首屏之后再量一次环、落一次状态。
+     ⚠️ 为什么需要这一下：上面 applySettings() 里的 initRing() 是跟
+        setClass(bodyEl,'style-v3',…) 挤在【同一个同步块】里跑的 ——
+        那一刻浏览器还没重算样式，环可能仍然是 display:none，
+        而 getTotalLength() 在这种状态下不可靠（本文件别处也记过这一条）。
+        补这一下之后，开机路径就和"用户改一下设置"的路径完全一致，
+        不会再出现"刚打开没有、随便改个设置才出来"。
+        100ms 在首屏之后，肉眼无感。 */
+  setTimeout(function () { initRing(); applyRingState(); }, 100);
 
   fetchWeather();
   setInterval(fetchWeather, WEATHER_MS);
