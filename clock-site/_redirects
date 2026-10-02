@@ -1,0 +1,11 @@
+# 天气请求同源代理
+#
+# 为什么需要它：
+# api.open-meteo.com 用 Let's Encrypt 证书，而 iPad 2（iOS 9）不信任
+# Let's Encrypt 的根证书 ISRG Root X1（那个根从 iOS 10 才进系统信任库）。
+# 直连会静默失败 —— 页面照常显示，天气栏永远空白，且不报任何错。
+#
+# 走这条规则后，浏览器只请求自己域名下的 /weather，
+# 由 Netlify 的服务器去取真正的接口再回传。
+# Netlify 的 200 rewrite 会自动转发查询参数。
+/weather  https://api.open-meteo.com/v1/forecast  200

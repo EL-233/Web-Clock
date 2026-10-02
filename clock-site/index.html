@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="format-detection" content="telephone=no">
+<title>时钟</title>
+<!--
+  翻页时钟 · iPad 2 / iOS 9.3.5 Safari 专用
+  iPad 2 屏幕为 4:3 —— 1024×768（横）/ 768×1024（竖）
+
+  ═══ v3 改动 ═══
+    新增右上角设置面板，三项可切换，选择持久化到 localStorage：
+      · 12/24 小时制（12h 不补零，AM/PM 挂在时卡左下角）
+      · 深色 / 浅色主题
+      · 卡片样式：v1 平衡（三张等大 + 小字栏 + 天气单行）
+                  v2 层次（秒卡半尺寸 + 大字栏 + 天气两栏）
+                  v3 走秒（无秒卡，时+分居中，外圈一圈走秒的环）
+
+    面板收起时，整页只有齿轮那个 1.6rem 的热区响应触摸 —— 可误触面积压到最小。
+    面板 15 秒无操作自动收起，切后台也会收起。
+
+    实现要点（都是踩过或查证过的）：
+    · 主题与样式用 body 上的 class 覆盖，**不用 CSS 变量**。
+      iOS 9.3 = Safari 9.1，CSS 变量只是「部分支持」，有 calc 嵌套的已知 bug；
+      本项目要覆盖的颜色本来就只有十来个，class 方案零风险。
+    · localStorage 先做一次可写性探测。iOS 无痕模式配额为 0，
+      setItem 会抛 QuotaExceededError —— 存不住就退回内存默认值，绝不影响时钟。
+    · visibilitychange 在 iOS 9 上要带 webkit 前缀，代码里做了特性检测。
+    · 两套样式的基础值直接按 v2 写死（**不挂在 body.style-v2 上**），
+      这样万一 JS 挂了、body 上没加类，页面仍按 v2 正常渲染。
+    · 天气两套排布都在 DOM 里、都填数据，切样式只是切显示 —— 不重新请求、不闪。
+    · 走秒带（v3 样式）用 SVG 的 stroke-dasharray/dashoffset 做，路径显式写成
+      从【顶部中点】出发顺时针绕一圈 —— 不用 <rect>，因为 rect 的虚线起点固定在
+      左上角，想挪到顶部中点得靠 dashoffset 反补，符号容易搞反且没法离线验证。
+    · 周长用 path.getTotalLength() 取，取不到回落到手算值 2590。
+      **不用 pathLength 属性**：Safari 9 对它支持没把握，万一不支持，
+      dasharray 会按用户单位解释，环会直接坏掉。
+    · **间距必须从「可见灰边」量，不是从 .clock 的 flex 盒边界量。**
+      卡片左右各有 0.23rem 外边距，用 flex 盒当基准会让左右间距凭空多出 0.23rem
+      （曾因此算成左右 0.53 / 上下 0.30 的不等距）。
+    · **横纵间距故意不等**，这是刻意的视觉平衡而非数学等距：
+        横向 0.46rem = 两页之间的黑边宽度（0.23 + 0.23）
+        纵向 0.41rem = 比横向小 0.05rem（在 R≈86 下约 4px）
+      等宽的横/纵间距在扁长构图里看起来并不相等，纵向会显得更大。
+    · 环盒与圆角都是**推导量**，不要凭手感调：
+        环盒宽 9.76rem = 9.12 + 2×(0.46 + 0.09 − 0.23)   ← −0.23 是卡片外边距
+        环盒高 4.1rem  = 3.1  + 2×(0.41 + 0.09)
+      圆角横纵分开（间距既不等，同一半径就不是等距偏移了）：
+        rx 92.5 = 卡片圆角 42 + 横向间距 46 + 半描边 4.5
+        ry 87.5 = 卡片圆角 42 + 纵向间距 41 + 半描边 4.5
+      半径取小了四角会向内收紧，直边正常、拐角更窄，看起来就是"不等距 + 圆角不对"。
+    · 走秒带用【小数秒】+ requestAnimationFrame 驱动 —— rAF 跟着屏幕刷新走，
+      iPad 上跑满 60Hz；setInterval 与 vsync 不同步，高刷屏上反而看得出拍频。
+      **帧循环只在 v3 样式下运行**（applySettings 里 start/stop），切走就停。
+    · 整分回绕时播一段 650ms 的满圈淡出（第三条 path `ring-flash`），
+      由 JS 逐帧写 opacity —— 不靠 CSS animation，
+      因为 SVG 元素上的 CSS 动画在 Safari 9 上没把握。
+    · .clock 必须有 position:relative —— 走秒带靠它做居中基准。
+      若被去掉，环会上溯到 .stage，而 stage 居中的是「时钟 + 上下文字栏」整组，
+      环会垂直错位。（v2 重写时这里曾被拿掉过，因为当时没有东西需要它。）
+
+  ═══ v2 改动（相对 v1）═══
+    1. 秒卡缩到一半，以左下角为锚点（.card--sm + .clock 的 align-items:flex-end）。
+       用真实尺寸减半，不是 transform:scale —— 后者不改布局盒子，「重算总宽再居中」会算错。
+       与分卡的间距不变；三张卡作为整体自动重新居中。
+    2. 两条文字栏字号 .34rem → .68rem，字距 .14em → .10em。
+       高度与间距改由两条栏自己控制（原来靠 .clock 的上下 margin）。
+    3. 天气改为左右两栏：左「描述 + 当前温度」，右「今日最高 / 最低」上下堆叠，
+       配红↑蓝↓。两栏定宽，所以描述文字长短变化不会让整条栏位移。
+       箭头用 CSS border 三角画，不用 ↑↓ 字符（那些字符在不同字体里字重/基线不一致）。
+    4. 翻页透视 perspective(160px) → perspective(20rem)。
+       160px 时透视距离只有卡高的 0.8 倍，是极端广角畸变；改后约 6.5 倍，接近长焦。
+       用 rem 是为了让透视距离跟着卡片缩放 —— 写死 px 会导致屏幕越大畸变越夸张。
+    5. 移除点击调暗（误触成本高于收益）。
+       （v3 只恢复了右上角一个 1.6rem 的设置热区，其余位置仍不响应触摸。）
+
+  ═══ 部署结构 ═══
+    clock-site/
+    ├── index.html                        本文件
+    ├── _redirects                        天气同源代理（解决 iPad 证书问题）
+    └── fonts/                            JetBrains Mono 静态实例（回退用）
+        ├── JetBrainsMono-Regular.ttf
+        ├── JetBrainsMono-Bold.ttf
+        └── JetBrainsMono-ExtraBold.ttf
+
+  ═══ 字体说明 ═══
+    数字优先用 Menlo —— 这是 Apple 的编码字体（SF Mono 的上一代），
+    iOS 7 起内置，所以 iPad 上本来就有。只是"调用系统字体"，不涉及嵌入，
+    没有授权问题（授权限制的是再分发字体文件）。
+
+    Menlo 在 Windows 上没有，所以 PC 上看会落到回退的 JetBrains Mono ExtraBold。
+    ⚠️ 也就是说 PC 预览和 iPad 实机的字形不完全一致。想统一的话，
+       把下面 .card 的 font-family 改成让 'JetBrains Mono' 排在 Menlo 前面。
+
+  ═══ 字体格式警告 ═══
+    回退用的 TTF 必须是静态字体，不能用 WOFF2 —— WOFF2 需要 iOS 10+，
+    iOS 9 会直接忽略并回退，不报错。字体目录里的三个 TTF 是从系统那份
+    可变字体 JetBrainsMono[wght].ttf 用 fontTools instancer 派生的静态实例
+    （fvar/gvar 已移除）。可变字体自身也需要 iOS 11+。
+
+  ═══ 兼容性约束（改动前请先读）═══
+    · 只能用 ES5 —— 无 let/const、箭头函数、模板字符串、fetch()
+    · backface-visibility 必须写 -webkit- 前缀（Safari 9–15.3 都要求），
+      其余 3D 属性（transform/perspective/animation）在 iOS 9 已无需前缀
+    · 不能用 CSS Grid、不能依赖 CSS 变量
+    · 3D 透视写进 transform 的 perspective() 函数里，全程不用 preserve-3d，
+      以免被祖先的 overflow / opacity / filter 压平成 flat
+    · 所有尺寸用 rem，根字号由 JS 按屏幕算，改数值不用动别处。
+      perspective() 的值也用 rem —— 它必须随卡片一起缩放。
+      改透视强度就改这一个数值（文件里共 10 处，全部一致），越大越平（越长焦）
+-->
+<style>
+/* ============================================================
+   JetBrains Mono（回退字体）
+   SIL Open Font License 1.1，可自由自托管
+   ============================================================ */
+@font-face {
+  font-family:'JetBrains Mono';
+  font-style:normal;
+  font-weight:400;
+  src:url('fonts/JetBrainsMono-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family:'JetBrains Mono';
+  font-style:normal;
+  font-weight:700;
+  src:url('fonts/JetBrainsMono-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family:'JetBrains Mono';
+  font-style:normal;
+  font-weight:800;
+  src:url('fonts/JetBrainsMono-ExtraBold.ttf') format('truetype');
+}
+
+/* ============================================================
+   基础
+   ============================================================ */
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background:#000; color:#fff;
+  overflow:hidden;
+  font-family:"Avenir Next","PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-user-select:none; -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ============================================================
+   舞台：日期在上、大钟在中、天气在下，三段都压同一条垂直中轴
+   ============================================================ */
+.stage {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  display:-webkit-flex; display:flex;
+  -webkit-flex-direction:column; flex-direction:column;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+  padding-bottom:1.2rem;          /* 视觉重心略高于几何中心 */
+}
+
+/* 上下两条灰色小字。各自独立居中，互不影响，
+   所以天气文字长短变化不可能推动日期。
+   v2：字号 .34rem → .68rem（翻倍），字距 .14em → .10em
+   （字号变大后原来的宽字距会显得松散）。
+   两条栏的高度与间距改为各自控制，不再依赖 .clock 的上下 margin。 */
+/* 基础值 = v2 层次样式。
+   v1 平衡样式在下面用 body.style-v1 覆盖。
+   默认值直接写在基础选择器上（而不是 body.style-v2），
+   这样万一 JS 挂了、body 上没加上类，页面仍按 v2 正常渲染。 */
+.bar {
+  font-size:.54rem;
+  font-weight:400;
+  letter-spacing:.10em;
+  color:#7d7d7d;
+  white-space:nowrap;
+}
+
+.bar--date {
+  height:.83rem;
+  line-height:.83rem;
+  margin-bottom:1.2rem;
+}
+
+.bar--weather {
+  height:1.33rem;
+  line-height:1.33rem;
+  margin-top:1.2rem;
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+}
+
+/* 天气两套排布都在 DOM 里，靠这组规则切换显示。
+   两份都填数据，所以切样式时不需要重新请求天气，也不会闪。 */
+.wx-v1 {                  /* v1 的天气单行：描述 + 当前温度 + 「最低/最高」 */
+  display:none;           /* 默认（v2）只显示两栏版 */
+  text-align:center;
+  width:100%;
+}
+
+/* ── v1 平衡样式：等大卡片 + 小字栏 + 天气单行 ── */
+body.style-v1 .bar            { font-size:.34rem; letter-spacing:.14em; }
+body.style-v1 .bar--date      { height:1.4rem; line-height:1.4rem; margin-bottom:1.35rem; }
+body.style-v1 .bar--weather   { height:1.4rem; line-height:1.4rem; margin-top:1.35rem; }
+body.style-v1 .wx-v1          { display:block; }
+body.style-v1 .wx-v2          { display:none; }
+
+/* ── v3 走秒带样式：去掉秒卡、时与分居中、外圈套一条走秒的环 ──
+   秒卡退出布局后，.clock 的宽度自然变成「时 + 分」两张卡（9.12rem），
+   而 .clock 本来就靠 .stage 的 align-items:center 居中，所以无需额外代码。
+   文字栏沿用 v2 那套（需求是「在当前基础上」改）。 */
+body.style-v3 #ss   { display:none; }
+body.style-v3 .ring { display:block; }
+
+/* v3 把竖向占位收紧，好让卡组能放大。
+   它是【高度受限】的：宽度方向允许 R≈92，高度方向只到 75。
+   收紧后竖排从 8.1rem 降到 7.7rem，R 就能从 75.3 提到 86，卡组大约大 14%。
+   环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
+/* v3 让【时钟】落在屏幕正中，而不是让「日期+时钟+天气」整组落在正中。
+   （整组居中的话，时钟会被顶到中心上方 —— 那正是"偏高"的来源。）
+   推导，竖排自上而下：
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.33   合计 7.04rem
+     时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
+     组半高 = 7.04/2 = 3.52rem  →  时钟比组中心高 .25rem
+   padding-top 会把内容下推 P/2，所以 P = 2 × .25 = .50rem。
+   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算。 */
+body.style-v3 .stage        { padding-top:.50rem; padding-bottom:0; }
+body.style-v3 .bar--date    { margin-bottom:1rem; }
+body.style-v3 .bar--weather { margin-top:1rem; }
+
+/* 走秒带本体。
+   尺寸用 rem：viewBox 1000×400 映射到 10rem×4rem，1 单位 = 0.01rem，
+   所以会随根字号一起缩放。
+   绝对定位 + pointer-events:none —— 不参与 flex 布局，也不挡触摸。
+   fill / stroke-width / stroke-linecap 都写在 SVG 属性上，
+   这里只给 stroke 颜色，好让主题覆盖。 */
+.ring {
+  position:absolute;
+  left:50%; top:50%;
+  /* 环盒尺寸是推导量（见 SVG 上方的算式）：
+       宽 = 8.72 + 2×(0.56 + 0.07 − 0.28) = 9.42rem   四个方向间距都是 0.56
+       高 = 2.88 + 2×(0.56 + 0.07)        = 4.14rem
+     ⚠️ 宽度那个 −0.28 是卡片外边距：间距必须从【可见灰边】量，
+        不是从 .clock 的 flex 盒边界量 —— 否则左右会比上下多出 0.28rem。
+     ⚠️ 改描边宽度、间距、卡片尺寸中的任何一个，都要连这里和圆角一起重算。 */
+  width:9.42rem; height:4.14rem;
+  margin:-2.07rem 0 0 -4.71rem;   /* 居中：宽高各取一半 */
+  display:none;
+  pointer-events:none;
+}
+/* 走带配色。两个主题方向相反：深色底往黑里压，浅色底往白里提。
+   进度带刻意压到"只是暗示"的程度（深色 #3a3a3a / 浅色 #c4c4c4）。
+   想再淡/再明显就改这两个值 —— 纯配色，不影响任何几何。
+
+   ⚠️ 底衬环【不跟着压】：它承载呼吸动效，太暗的话 0.15~1.0 的透明度变化白做。
+      所以只压"已走"部分，让进度成为一层很淡的暗示；"未走"部分仍保留
+      能看出呼吸的强度。两者始终是 已走(#3a3a3a) > 未走峰值(#1e1e1e)，所以分得清。 */
+.ring-track { stroke:#1e1e1e; }   /* 未走部分：由 JS 逐帧改 opacity 做呼吸 */
+.ring-fill  { stroke:#3a3a3a; }   /* 已走部分：只是暗示 */
+.ring-flash { stroke:#3a3a3a; }   /* 满圈淡出那一层，与进度带同色，否则淡出瞬间会看出跳变 */
+
+/* v2 的天气行：内层再来一层 flex，因为外层 .bar--weather 现在要同时容纳 v1/v2 两套 */
+.wx-v2 {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+}
+
+/* 左栏：天气描述 + 当前温度。
+   定宽 + 内容居中 —— 描述长度会在「晴」和「晴间多云」之间变化，
+   不定宽的话整条天气栏会重新居中、产生可见位移。 */
+.wx-main {
+  width:4.5rem;
+  text-align:center;
+}
+
+/* 右栏：今日最高 / 最低，上下堆叠 */
+.wx-extremes {
+  width:1.9rem;
+  margin-left:.5rem;
+  display:-webkit-flex; display:flex;
+  -webkit-flex-direction:column; flex-direction:column;
+  -webkit-justify-content:center; justify-content:center;
+  font-size:.44rem;               /* 比当前温度小一档，突出当前值 */
+  line-height:.58rem;
+  letter-spacing:.02em;
+}
+.wx-hi, .wx-lo {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  white-space:nowrap;
+}
+
+/* 冷热箭头用 border 三角画，不用 ↑ ↓ 字符 ——
+   那些字符在 Avenir Next / 苹方上的字重和基线位置不一致，跨设备观感不稳。
+   三角的尺寸和颜色完全可控。 */
+.arw {
+  display:inline-block;
+  width:0; height:0;
+  margin-right:.14rem;
+  border-left:.09rem solid transparent;
+  border-right:.09rem solid transparent;
+}
+.arw-up { border-bottom:.13rem solid #ff5c5c; }   /* 红 = 高温 */
+.arw-dn { border-top:.13rem solid #4d9fff; }      /* 蓝 = 低温 */
+
+/* ============================================================
+   卡片
+   三张：时 / 分 / 秒。每张装一整个「单位」，所以是 2 位数字一起翻。
+   参考图的比例是近正方形，但那是建立在「窄体比例字体」上的。
+   Menlo / JetBrains Mono 都是等宽，每个字符固定 0.6em，
+   两张数字就要 1.2em —— 想要数字撑满卡片高度，卡片就必须比正方形宽。
+   这里取 4.1 : 3.1 ≈ 1.32:1 作为折中，数字约占卡高 64%。
+   ============================================================ */
+.clock {
+  /* 必须留着 position:relative —— 走秒带（.ring）是绝对定位，
+     以 .clock 为基准居中。若去掉，它会上溯到 .stage，
+     而 .stage 居中的是「时钟 + 上下文字栏」整组，环就会垂直错位。
+     （v2 重写时这里被拿掉过，因为当时没有东西需要它。） */
+  position:relative;
+  display:-webkit-flex; display:flex;
+  /* 底对齐：三张卡底部对齐后，缩小一半的秒卡就以它的【左下角】为锚点定位，
+     且与分卡的间距不变。整个卡组仍由 .stage 的 align-items:center 做水平居中。 */
+  -webkit-align-items:flex-end; align-items:flex-end;
+}
+
+.card {
+  position:relative;
+  /* 整体再缩一档。数字【等比】跟着缩 —— 只缩卡片不缩数字的话，
+     数字在变小的卡里占比反而更大。这个类是三种样式共用的，所以 v1/v2 也会跟着缩。
+     ⚠️ 外边距从 .23 加到 .28：卡片缩小本身【不会】让两卡之间的黑边变宽，
+        那由外边距决定（两卡之间 = 2×外边距）。要它变宽就得动这里。 */
+  width:3.80rem; height:2.88rem;
+  margin:0 .28rem;               /* 两卡之间 = 0.56rem */
+  border-radius:.38rem;          /* 约占卡宽 10%，接近参考图的大圆角 */
+  font-size:2.56rem;
+  /* Menlo = Apple 编码字体，iOS 内置；Windows 上没有，回退到自托管的 JetBrains Mono */
+  font-family:Menlo,'JetBrains Mono',monospace;
+}
+
+/* v2：秒卡半尺寸。所有与尺寸相关的值一律取整卡的一半。
+   用真实尺寸减半，而不是 transform:scale(0.5) ——
+   缩放变换不改变布局盒子，.clock 算出的总宽不会变小，
+   「重算总宽再整体居中」就会算错。
+   左右 margin 保持 .23rem 不变，所以与分卡的间距一点没变。 */
+.card--sm {
+  width:1.90rem; height:1.44rem;      /* = .card 的一半 */
+  font-size:1.28rem;
+  border-radius:.19rem;
+}
+.card--sm .static-top,    .card--sm .flap-top    { border-radius:.19rem .19rem 0 0; }
+.card--sm .static-bottom, .card--sm .flap-bottom { border-radius:0 0 .19rem .19rem; }
+.card--sm .half > span {
+  height:1.44rem;
+  line-height:1.44rem;        /* 必须与卡片高度一致，否则上下两半接缝会错位 */
+}
+
+/* 半片：各占 50%，负责裁出字形的上半 / 下半 */
+.half {
+  position:absolute; left:0; width:100%; height:50%;
+  overflow:hidden;
+  background:#1c1c1c;            /* 上下两半同色 —— 简约感的来源 */
+  -webkit-backface-visibility:hidden;   /* ← 必需前缀，漏写会导致翻面后背面可见 */
+          backface-visibility:hidden;
+}
+.static-top, .flap-top {
+  top:0;
+  border-radius:.38rem .38rem 0 0;
+  /* 只用一条细暗线做折页分界，不像上一版靠明暗渐变。
+     外层阴影不会参与布局，所以不会影响上下两半的对齐。 */
+  box-shadow:0 1px 0 #0b0b0b;
+}
+.static-bottom, .flap-bottom {
+  bottom:0;
+  border-radius:0 0 .38rem .38rem;
+}
+
+/* 半片里的字形：高度 = 整卡高，靠 top / bottom 两个锚点决定露出哪一半。
+   上下两半共用同一个居中行盒，接缝因此严丝合缝。 */
+.half > span {
+  position:absolute; left:0;
+  display:block;
+  width:100%; height:2.88rem; line-height:2.88rem;   /* 必须 = .card 高度 */
+  text-align:center;
+  color:#fff;
+  font-weight:700;               /* Menlo Bold */
+  letter-spacing:0;
+}
+.static-top > span,    .flap-top > span    { top:0; }
+.static-bottom > span, .flap-bottom > span { bottom:0; }
+
+/* 层级：上半片要在下半片之上，折页暗线才不会被盖掉 */
+.static-bottom { z-index:1; }
+.static-top    { z-index:2; }
+.flap-bottom   { z-index:3; }
+.flap-top      { z-index:4; }
+
+/* 旋转轴：上半片绕下边缘，下半片绕上边缘 */
+.flap-top    { -webkit-transform-origin:50% 100%; transform-origin:50% 100%; }
+.flap-bottom {
+  -webkit-transform-origin:50% 0%; transform-origin:50% 0%;
+  /* 静止时预先折到背面（配合 backface-visibility 即不可见） */
+  -webkit-transform:perspective(20rem) rotateX(180deg);
+          transform:perspective(20rem) rotateX(180deg);
+}
+
+/* 旧值上半片向下翻平 */
+@-webkit-keyframes flipDown {
+  from { -webkit-transform:perspective(20rem) rotateX(0deg); }
+  to   { -webkit-transform:perspective(20rem) rotateX(-180deg); }
+}
+@keyframes flipDown {
+  from { transform:perspective(20rem) rotateX(0deg); }
+  to   { transform:perspective(20rem) rotateX(-180deg); }
+}
+/* 新值下半片从背面翻上来 */
+@-webkit-keyframes flipUp {
+  from { -webkit-transform:perspective(20rem) rotateX(180deg); }
+  to   { -webkit-transform:perspective(20rem) rotateX(0deg); }
+}
+@keyframes flipUp {
+  from { transform:perspective(20rem) rotateX(180deg); }
+  to   { transform:perspective(20rem) rotateX(0deg); }
+}
+
+.flip.go .flap-top {
+  -webkit-animation:flipDown .5s ease-in-out both;
+          animation:flipDown .5s ease-in-out both;
+}
+.flip.go .flap-bottom {
+  -webkit-animation:flipUp .5s ease-in-out both;
+          animation:flipUp .5s ease-in-out both;
+}
+
+/* ============================================================
+   浅色主题
+   深色是基础值（写在各自规则里），这里只列需要覆盖的。
+   不用 CSS 变量 —— 要改的只有十来个颜色值，class 覆盖足够用，
+   不值得为省几行去赌一个版本相关的特性。
+   ============================================================ */
+body.light              { background:#e9e9e9; color:#151515; }
+body.light .half        { background:#fafafa; }
+body.light .static-top,
+body.light .flap-top    { box-shadow:0 1px 0 #d6d6d6; }    /* 折页线 */
+body.light .half > span { color:#151515; }
+body.light .bar         { color:#6f6f6f; }
+body.light .ampm        { color:#777; }     /* 深色主题那个 #8a8a8a 放在浅色卡面上会太淡 */
+body.light .arw-up      { border-bottom-color:#d93a3a; }    /* 浅色底上要压深一档 */
+body.light .arw-dn      { border-top-color:#2f7fd4; }
+body.light .gear i      { background:#b4b4b4; }
+body.light .ring-track  { stroke:#dfdfdf; }   /* 同样为了呼吸看得出来，比上一版实一点 */
+body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
+body.light .ring-flash  { stroke:#c4c4c4; }
+body.light .panel       { background:#fff; box-shadow:0 .06rem .34rem rgba(0,0,0,.16); }
+body.light .panel .lbl  { color:#6f6f6f; }
+body.light .panel .seg  { background:#ededed; }
+body.light .panel .seg button    { color:#6f6f6f; }
+body.light .panel .seg button.on { background:#cfcfcf; color:#111; }
+
+/* ============================================================
+   AM/PM —— 只挂在时卡上，12 小时制才显示
+   它是 .card 的绝对定位子元素，z-index 高于四块半片，
+   所以翻页时纹丝不动，也不会被 rotateX 带走。位置对应参考图：左下角。
+   ============================================================ */
+.ampm {
+  position:absolute;
+  left:.26rem; bottom:.2rem;
+  z-index:5;
+  display:none;
+  font-size:.42rem;
+  line-height:1;
+  letter-spacing:.04em;
+  color:#8a8a8a;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+}
+body.h12 .ampm { display:block; }
+
+/* ============================================================
+   设置：右上角图标 + 展开面板
+   图标画得很小很暗（不抢大钟的视觉），但触摸热区放大到 1.6rem，
+   不用瞄准。面板收起时，整页除这一个热区外没有任何触摸响应。
+   ============================================================ */
+.gear {
+  position:fixed;
+  top:.1rem; right:.1rem;           /* 贴到最右上角 */
+  width:1.6rem; height:1.6rem;      /* 触摸热区，远大于图标本身 */
+  padding:0; border:0;
+  background:none;
+  z-index:60;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+/* 图标本体：就三条细横线，做得很小很淡，不抢大钟的视觉。
+   触摸热区仍是 .gear 那 1.6rem（只是看不见），所以线虽细也很好点。
+   不用 ⚙ 字符 —— 各字体的字形和字重差异太大，跨设备观感不稳。 */
+.gear i {
+  position:absolute;
+  left:50%;
+  width:.40rem; height:.042rem;
+  margin-left:-.2rem;
+  border-radius:.021rem;
+  background:#3a3a3a;
+}
+.gear i:nth-child(1) { top:.64rem; }
+.gear i:nth-child(2) { top:.78rem; }
+.gear i:nth-child(3) { top:.92rem; }
+
+.panel {
+  position:fixed;
+  top:1.85rem; right:.1rem;         /* 跟着齿轮一起贴右上角 */
+  width:7.8rem;                  /* 原来 6.6rem —— 标签和按钮挤在一起 */
+  padding:.52rem .64rem;
+  border-radius:.3rem;
+  background:#1b1b1b;
+  box-shadow:0 .06rem .34rem rgba(0,0,0,.55);
+  z-index:61;
+  display:none;
+}
+.panel.on { display:block; }
+
+.panel .row {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:space-between; justify-content:space-between;
+  height:.98rem;                 /* 原来 .72rem */
+}
+.panel .lbl {
+  font-size:.36rem;
+  color:#8a8a8a;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+}
+.panel .seg {
+  display:-webkit-flex; display:flex;
+  border-radius:.18rem;
+  overflow:hidden;
+  background:#101010;
+}
+.panel .seg button {
+  border:0;
+  border-radius:0;
+  background:none;
+  padding:.22rem .36rem;         /* 原来 .14rem .26rem —— 按钮也好按一些 */
+  color:#8a8a8a;
+  font-size:.34rem;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.panel .seg button.on {
+  background:#3d3d3d;
+  color:#fff;
+}
+
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <div class="bar bar--date" id="date">&nbsp;</div>
+
+  <div class="clock">
+
+    <!-- 走秒带（只在 v3 样式显示）
+         进度 = 本分钟已过的【小数秒】/ 60，所以是连续推进而不是每秒跳一格。
+         路径从【顶部中点】出发顺时针绕一圈回到原点 —— 用显式 path 而不是 <rect>，
+         因为 rect 的虚线起点固定在左上角，挪到顶部中点得靠 dashoffset 反补，
+         符号容易搞反且没法离线验证。
+         fill / stroke-width / stroke-linecap 写成属性，stroke 颜色由 CSS 给（好做主题）。
+
+         几何（viewBox 单位，1 单位 = 0.01rem）。
+         ⚠️ 全部是推导量，不要凭手感调：
+
+           卡片 3.80 × 2.88rem，卡片外边距 0.28（加到 0.28 才能让两卡之间真的变宽）。
+           间距四个方向全部 = 0.56rem = 两页之间的黑边宽度（0.28 × 2）。
+           卡组【可见灰边】跨度 = 8.16rem（3.80 + 中间 0.56 + 3.80）
+
+           ⚠️ 以下全是推导量，不要凭手感调：
+           环盒宽 9.42rem = 8.72 + 2×(0.56 + 0.07 − 0.28)   ← 8.72 是 flex 盒宽，−0.28 是卡片外边距
+           环盒高 4.14rem = 2.88 + 2×(0.56 + 0.07)
+           描边   7 = 0.07rem
+           中线距 SVG 边 3.5
+
+           圆角 97.5 = 卡片圆角 38 + 间距 56 + 半描边 3.5
+           （横纵间距现在相等，所以圆角也相等，不必再用椭圆弧。）
+           半径必须跟着间距和描边走 —— 取小了四角会向内收紧，直边正常、拐角更窄。
+
+         三条 path 的 d 必须完全一致，才能严丝合缝叠在一起。 -->
+    <svg class="ring" viewBox="0 0 942 414" aria-hidden="true">
+      <!-- 未走部分：opacity 由 JS 逐帧做「一秒一次」的呼吸 -->
+      <path class="ring-track" id="ring-track"
+            d="M471 3.5H841A97.5 97.5 0 0 1 938.5 101V313A97.5 97.5 0 0 1 841 410.5H101A97.5 97.5 0 0 1 3.5 313V101A97.5 97.5 0 0 1 101 3.5H471"
+            fill="none" stroke-width="7" stroke-linecap="butt"/>
+      <path class="ring-fill" id="ring-fill"
+            d="M471 3.5H841A97.5 97.5 0 0 1 938.5 101V313A97.5 97.5 0 0 1 841 410.5H101A97.5 97.5 0 0 1 3.5 313V101A97.5 97.5 0 0 1 101 3.5H471"
+            fill="none" stroke-width="7" stroke-linecap="butt"/>
+      <!-- 整分回绕时用来做「满圈淡出」的那一层。平时 opacity=0，不动。
+           stroke 颜色同样由 CSS 给。 -->
+      <path class="ring-flash" id="ring-flash"
+            d="M471 3.5H841A97.5 97.5 0 0 1 938.5 101V313A97.5 97.5 0 0 1 841 410.5H101A97.5 97.5 0 0 1 3.5 313V101A97.5 97.5 0 0 1 101 3.5H471"
+            fill="none" stroke-width="7" stroke-linecap="butt" opacity="0"/>
+    </svg>
+
+    <!-- 时：两位一起翻。AM/PM 挂在这张卡上，12 小时制才显示。
+         它是 .card 的绝对定位子元素、z-index 高于四块半片，
+         所以翻转时纹丝不动，也不会被 rotateX 带走。 -->
+    <div class="card flip" id="hh">
+      <div class="half static-top"><span>00</span></div>
+      <div class="half static-bottom"><span>00</span></div>
+      <div class="half flap-top"><span>00</span></div>
+      <div class="half flap-bottom"><span>00</span></div>
+      <span class="ampm" id="ampm"></span>
+    </div>
+    <!-- 分：两位一起翻 -->
+    <div class="card flip" id="mm">
+      <div class="half static-top"><span>00</span></div>
+      <div class="half static-bottom"><span>00</span></div>
+      <div class="half flap-top"><span>00</span></div>
+      <div class="half flap-bottom"><span>00</span></div>
+    </div>
+    <!-- 秒：只有两块静态半片，不翻页。
+         这台设备要 24 小时常亮，秒位翻页等于 50% 的时间都在跑动画。
+         card--sm 让它缩到一半；.clock 的 flex-end 让它以左下角为锚点对齐。 -->
+    <div class="card card--sm" id="ss">
+      <div class="half static-top"><span>00</span></div>
+      <div class="half static-bottom"><span>00</span></div>
+    </div>
+  </div>
+
+  <!-- 天气两套排布都写在 DOM 里，靠 body.style-v1 切换显示。
+       两份都由 JS 填数据，所以切样式时不需要重新请求天气、也不会闪。
+       v2 版：左栏「描述 + 当前温度」，右栏「最高 / 最低」上下堆叠
+              （两栏都定宽，所以描述长短变化不会让整条栏位移） -->
+  <div class="bar bar--weather">
+    <div class="wx-v2">
+      <div class="wx-main" id="wx-main">-</div>
+      <div class="wx-extremes">
+        <div class="wx-hi"><i class="arw arw-up"></i><span id="wx-hi">-</span></div>
+        <div class="wx-lo"><i class="arw arw-dn"></i><span id="wx-lo">-</span></div>
+      </div>
+    </div>
+    <!-- v1 版：单行「描述 当前温度 最低/最高」，无箭头 -->
+    <div class="wx-v1" id="wx-v1">-</div>
+  </div>
+
+</div>
+
+<!-- 设置：右上角图标 + 展开面板。面板收起时整页除这个热区外无触摸响应。 -->
+<button class="gear" id="gear" type="button" aria-label="设置"><i></i><i></i><i></i></button>
+
+<div class="panel" id="panel">
+  <div class="row">
+    <span class="lbl">小时制</span>
+    <span class="seg" data-k="h12">
+      <button type="button" data-v="0">24 小时</button>
+      <button type="button" data-v="1">12 小时</button>
+    </span>
+  </div>
+  <div class="row">
+    <span class="lbl">主题</span>
+    <span class="seg" data-k="theme">
+      <button type="button" data-v="dark">深色</button>
+      <button type="button" data-v="light">浅色</button>
+    </span>
+  </div>
+  <div class="row">
+    <span class="lbl">样式</span>
+    <span class="seg" data-k="style">
+      <button type="button" data-v="v1">平衡</button>
+      <button type="button" data-v="v2">层次</button>
+      <button type="button" data-v="v3">走秒</button>
+    </span>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 配置 ================= */
+  var LAT = 0.00;          // 示例坐标
+  var LON = 0.00;
+  var WEATHER_MS = 20 * 60 * 1000;   // 天气刷新间隔：20 分钟
+
+  var WEEK = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+
+  /* WMO 天气码 → 中文（Open-Meteo 只返回数字码） */
+  var WMO = {
+    0:'晴', 1:'晴间多云', 2:'多云', 3:'阴',
+    45:'雾', 48:'雾凇',
+    51:'毛毛雨', 53:'毛毛雨', 55:'毛毛雨',
+    56:'冻毛毛雨', 57:'冻毛毛雨',
+    61:'小雨', 63:'中雨', 65:'大雨',
+    66:'冻雨', 67:'冻雨',
+    71:'小雪', 73:'中雪', 75:'大雪',
+    77:'雪粒',
+    80:'小阵雨', 81:'阵雨', 82:'强阵雨',
+    85:'小阵雪', 86:'大阵雪',
+    95:'雷阵雨', 96:'雷阵雨', 97:'雷阵雨',
+    98:'雷阵雨', 99:'雷阵雨'
+  };
+
+  var dateEl  = document.getElementById('date');
+  var wxMain  = document.getElementById('wx-main');   // v2 左栏：描述 + 当前温度
+  var wxHi    = document.getElementById('wx-hi');     // v2 右栏上行：最高温
+  var wxLo    = document.getElementById('wx-lo');     // v2 右栏下行：最低温
+  var wxV1    = document.getElementById('wx-v1');     // v1 单行版
+  var ampmEl  = document.getElementById('ampm');
+  var gearEl  = document.getElementById('gear');
+  var panelEl = document.getElementById('panel');
+  var ssRoot  = document.getElementById('ss');        // 样式切换时增删 card--sm
+
+  var bodyEl  = document.body;
+
+  /* ================= 设置 =================
+     三项：h12 / theme / style。持久化到 localStorage。
+
+     localStorage 必须当成「随时会失败」来用：
+     iOS 无痕模式下配额为 0，setItem 会直接抛 QuotaExceededError。
+     所以先做一次可写性探测，之后所有读写都包 try/catch，
+     存不住就退回内存里的默认值。
+     —— 设置记不住可以接受，但它绝不能把时钟本身搞挂。 */
+  var STORE_KEY = 'clockSettings';
+  var settings  = { h12:false, theme:'dark', style:'v2' };
+
+  var canStore = (function () {
+    try {
+      localStorage.setItem('__probe', '1');
+      localStorage.removeItem('__probe');
+      return true;
+    } catch (e) { return false; }
+  })();
+
+  function loadSettings() {
+    if (!canStore) { return; }
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) { return; }
+      var o = JSON.parse(raw);
+      if (!o) { return; }
+      if (o.h12 === true || o.h12 === false)         { settings.h12 = o.h12; }
+      if (o.theme === 'dark' || o.theme === 'light') { settings.theme = o.theme; }
+      if (o.style === 'v1'  || o.style === 'v2' || o.style === 'v3') {
+        settings.style = o.style;
+      }
+    } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
+  }
+
+  function saveSettings() {
+    if (!canStore) { return; }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+
+  /* classList 的 toggle(name, force) 第二参数在老 Safari 上不可靠，写成显式的 */
+  function setClass(el, name, on) {
+    if (on) { el.classList.add(name); } else { el.classList.remove(name); }
+  }
+
+  /* 让面板里的按钮反映当前设置 */
+  function syncSegs() {
+    var segs = panelEl.querySelectorAll('.seg');
+    for (var i = 0; i < segs.length; i++) {
+      var seg  = segs[i];
+      var k    = seg.getAttribute('data-k');
+      var cur  = (k === 'h12')   ? (settings.h12 ? '1' : '0')
+               : (k === 'theme') ? settings.theme
+               :                   settings.style;
+      var btns = seg.getElementsByTagName('button');
+      for (var j = 0; j < btns.length; j++) {
+        setClass(btns[j], 'on', btns[j].getAttribute('data-v') === cur);
+      }
+    }
+  }
+
+  /* 把设置落到 DOM。三处：
+       body.h12      → AM/PM 显隐
+       body.light    → 浅色主题的颜色覆盖
+       body.style-vX → 两套排版（CSS 里的覆盖规则读这个类）
+       #ss 的 card--sm → 秒卡半尺寸（v1 样式下要摘掉） */
+  function applySettings() {
+    setClass(bodyEl, 'h12',      settings.h12);
+    setClass(bodyEl, 'light',    settings.theme === 'light');
+    setClass(bodyEl, 'style-v1', settings.style === 'v1');
+    setClass(bodyEl, 'style-v2', settings.style === 'v2');
+    setClass(bodyEl, 'style-v3', settings.style === 'v3');
+    setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
+
+    layout();     // 三套样式的根字号系数不同，换样式必须重算
+    initRing();   // 环只在 v3 下可见，这时才量得到真实周长
+    if (settings.style === 'v3') { startRing(); } else { stopRing(); }
+    syncSegs();
+    tick();       // 12/24 制切换后立刻按新格式重画
+  }
+
+  function setSetting(k, v) {
+    if (k === 'h12')   { settings.h12   = (v === '1'); }
+    if (k === 'theme') { settings.theme = (v === 'light') ? 'light' : 'dark'; }
+    if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
+    saveSettings();
+    applySettings();
+  }
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  /* ================= 尺寸 =================
+     全站尺寸用 rem，根字号按屏幕算，横竖屏自动适配。
+
+     三套样式的占位不同，系数必须分别取：
+       v1 平衡  卡组 13.68rem 宽 | 竖排 8.6rem
+       v2 层次  卡组 11.63rem 宽 | 竖排 8.1rem
+       v3 走秒  环盒  9.76rem 宽 | 竖排 7.7rem（间距被 CSS 收紧了）
+     用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
+     分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
+     而且这样每套都能撑满屏幕。反过来若统一按最宽的 v1 取值，v2 会被迫缩小 12%。
+
+     v3 的高度系数比别的样式大：它就是靠 CSS 里收窄竖向间距腾出的空间，
+     才把 R 从 75.3 提到 86（卡组大 14%）。横屏下宽向允许到 92、高向到 86，
+     所以最终是高度在约束 —— 想让 v3 再大就得继续压竖向。 */
+  function layout() {
+    var w = window.innerWidth, h = window.innerHeight;
+    var isV3 = (settings.style === 'v3');
+    var k  = (settings.style === 'v1') ? 0.058 : (isV3 ? 0.086 : 0.067);
+    var kh = isV3 ? 0.112 : 0.098;
+    var size = Math.min(w * k, h * kh);
+    document.documentElement.style.fontSize = size + 'px';
+  }
+
+  /* 把文字写进某个半片。结构固定为 <div class="half"><span>字</span></div>，
+     firstChild 是 span，span 的 firstChild 是文本节点。复用节点，不新建 DOM。 */
+  function put(half, text) {
+    var t = half.firstChild.firstChild;
+    if (t.nodeValue !== text) { t.nodeValue = text; }
+  }
+
+  /* ================= 翻页卡 =================
+     每张卡由四块半片组成，整张卡一起翻（所以是「45」这样两位一起动）：
+       static-top    新值上半 —— 旧上半片翻走后露出来
+       static-bottom 旧值下半 —— 垫在底下，最后被新下半片盖住
+       flap-top      旧值上半 —— 绕下边缘 0° → -180°
+       flap-bottom   新值下半 —— 绕上边缘 180° → 0° */
+  function FlipCard(id) {
+    var root = document.getElementById(id);
+    this.root = root;
+    this.staticTop    = root.querySelector('.static-top');
+    this.staticBottom = root.querySelector('.static-bottom');
+    this.flapTop      = root.querySelector('.flap-top');
+    this.flapBottom   = root.querySelector('.flap-bottom');
+    this.value = null;
+    this.animating = false;
+
+    var self = this;
+    var onEnd = function () { self.settle(); };
+    // iOS 9 上动画结束事件可能只以带前缀的形式派发，两个都挂。
+    // settle() 内部有 animating 闸门，重复触发是安全的空操作。
+    this.flapTop.addEventListener('animationend', onEnd, false);
+    this.flapTop.addEventListener('webkitAnimationEnd', onEnd, false);
+  }
+
+  FlipCard.prototype.set = function (v) {
+    if (v === this.value) { return; }
+    var old = this.value;
+
+    // 首次落定：四片直接写成当前值，不播动画（避免页面加载时乱翻）
+    if (old === null) {
+      put(this.staticTop, v); put(this.staticBottom, v);
+      put(this.flapTop, v);   put(this.flapBottom, v);
+      this.value = v;
+      return;
+    }
+
+    // 上一次还没收尾就先收掉，避免状态错乱
+    if (this.animating) { this.settle(); }
+
+    put(this.staticTop, v);
+    put(this.staticBottom, old);
+    put(this.flapTop, old);
+    put(this.flapBottom, v);
+
+    this.value = v;
+    this.animating = true;
+    this.root.classList.add('go');
+  };
+
+  // 动画收尾：四片统一归位到当前值，此时视觉上完全等价，不会有跳变
+  FlipCard.prototype.settle = function () {
+    if (!this.animating) { return; }
+    this.animating = false;
+    this.root.classList.remove('go');
+    var v = this.value;
+    put(this.staticTop, v); put(this.staticBottom, v);
+    put(this.flapTop, v);   put(this.flapBottom, v);
+  };
+
+  /* 静态卡：只有上下两块，直接改字，不播动画（秒位用） */
+  function StaticCard(id) {
+    var root = document.getElementById(id);
+    this.top    = root.querySelector('.static-top');
+    this.bottom = root.querySelector('.static-bottom');
+    this.value = null;
+  }
+  StaticCard.prototype.set = function (v) {
+    if (v === this.value) { return; }
+    this.value = v;
+    put(this.top, v);
+    put(this.bottom, v);
+  };
+
+  var hhCard = new FlipCard('hh');
+  var mmCard = new FlipCard('mm');
+  var ssCard = new StaticCard('ss');
+
+  /* ================= 走秒带（v3 样式） =================
+     进度 = 本分钟已过的【小数秒】/ 60，所以环是连续推进而不是每秒跳一格。
+
+     用 requestAnimationFrame 驱动 —— 它跟着屏幕刷新走，iPad 上就是 60Hz 跑满；
+     而 setInterval 与 vsync 不同步，在高刷屏上反而看得出抖动/拍频。
+     不认 rAF 的旧浏览器回退到 setTimeout(16)。
+     **帧循环只在 v3 样式下运行** —— 切走就停，不白烧电。
+
+     周长用 getTotalLength() 取；取不到（环在 display:none 下有时返回 0 或抛异常）
+     就回落到手算值 —— 圆角矩形周长 ≈ 2517（按 r=97.5 的圆角分段累加）。
+
+     整分回绕时（59.99s → 0s）播一段满圈淡出：环不是「啪」地消失，
+     而是从满圈快速淡掉再重新长起来。
+     这一层也逐帧写 opacity，不靠 CSS animation ——
+     SVG 元素上的 CSS 动画在 Safari 9 上没把握，而这里本来就有逐帧循环可用。 */
+  var FLASH_MS = 650;      // 满圈淡出的时长
+
+  var TRACK_MIN = 0.15;    // 呼吸最暗时的透明度（不做到 0，留一点空间参照）
+
+  var ringTrack = document.getElementById('ring-track');
+  var ringFill  = document.getElementById('ring-fill');
+  var ringFlash = document.getElementById('ring-flash');
+  var ringLen   = 2517;
+  var ringPrev  = -1;      // 上一帧的小数秒，用于检测回绕
+  var flashT0   = 0;       // 淡出起始时间戳；0 表示没在播
+  var ringRAF   = 0;       // 帧循环句柄；0 表示没在跑
+
+  function initRing() {
+    if (!ringFill) { return; }
+    var l = 0;
+    try { l = ringFill.getTotalLength(); } catch (e) { l = 0; }
+    if (l > 0) { ringLen = l; }
+    ringFill.setAttribute('stroke-dasharray', ringLen);
+    ringPrev = -1;
+    flashT0  = 0;
+    if (ringFlash) { ringFlash.setAttribute('opacity', 0); }
+    updateRing();
+  }
+
+  function updateRing() {
+    if (!ringFill) { return; }
+    // 不用 v3 样式时环是隐藏的，没必要每帧算（切到 v3 时 initRing 会重画一次）
+    if (settings.style !== 'v3' && !flashT0) { return; }
+
+    var now = new Date();
+    var sec = now.getSeconds() + now.getMilliseconds() / 1000;
+
+    // 回绕检测：本帧秒数明显小于上一帧 → 刚跨过整分
+    if (ringPrev >= 0 && sec + 0.5 < ringPrev) { flashT0 = Date.now(); }
+    ringPrev = sec;
+
+    var drawn = ringLen * (sec / 60);
+    ringFill.setAttribute('stroke-dashoffset', ringLen - drawn);
+    // 整分那一瞬 drawn = 0，而有些渲染器会给「长度为零的虚线」画出一条发丝线
+    // —— 在 iPad 上看得见、桌面浏览器看不见，正是这一类的引擎差异。
+    // 短于约一个设备像素就整条隐藏；只影响每分钟开头 ~40ms，肉眼无感。
+    ringFill.setAttribute('visibility', drawn < 1.5 ? 'hidden' : 'visible');
+
+    // 未走部分的「呼吸」：**两秒一个周期**，偶数整秒最亮、奇数整秒最暗。
+    // 相位取在整秒最亮，是为了和秒针的节拍对上；周期取 2 秒是为了更缓、
+    // 更像背景的一点起伏而不是在闪。
+    // 已走部分盖在它上面，所以这个动效只作用在没走到的区段。
+    if (ringTrack) {
+      var beat = 0.5 + 0.5 * Math.cos(sec * Math.PI);
+      ringTrack.setAttribute('opacity', TRACK_MIN + (1 - TRACK_MIN) * beat);
+    }
+
+    if (flashT0 && ringFlash) {
+      var k = (Date.now() - flashT0) / FLASH_MS;
+      if (k >= 1) {
+        flashT0 = 0;
+        ringFlash.setAttribute('opacity', 0);
+      } else {
+        ringFlash.setAttribute('opacity', 0.45 * (1 - k));
+      }
+    }
+  }
+
+  /* 帧循环。ringRAF 同时兼作「有没有在跑」的标志。 */
+  function ringFrame() {
+    updateRing();
+    ringRAF = window.requestAnimationFrame
+            ? window.requestAnimationFrame(ringFrame)
+            : setTimeout(ringFrame, 16);          // 老浏览器兜底
+  }
+  function startRing() {
+    if (ringRAF) { return; }                      // 已经在跑就别再起一条
+    ringFrame();
+  }
+  function stopRing() {
+    if (!ringRAF) { return; }
+    if (window.cancelAnimationFrame) { window.cancelAnimationFrame(ringRAF); }
+    else { clearTimeout(ringRAF); }
+    ringRAF = 0;
+  }
+
+  /* ================= 时间 =================
+     每次重新读 new Date()，不会累积漂移；只在值真的变了才动 DOM */
+  var lastDate  = '';
+  var lastAmPm = '';
+
+  function tick() {
+    var d = new Date();
+    var h = d.getHours();
+
+    if (settings.h12) {
+      var h12 = h % 12;
+      if (h12 === 0) { h12 = 12; }
+      hhCard.set('' + h12);            // 12 小时制不补零（「5」而不是「05」），与参考图一致
+      var ap = (h < 12) ? 'AM' : 'PM';
+      if (ap !== lastAmPm) {
+        lastAmPm = ap;
+        setText(ampmEl, ap);
+      }
+    } else {
+      hhCard.set(pad(h));
+    }
+
+    mmCard.set(pad(d.getMinutes()));
+    ssCard.set(pad(d.getSeconds()));   // 走秒带由自己的 20fps 循环驱动，不在这里
+
+    var stamp = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    if (stamp !== lastDate) {
+      lastDate = stamp;
+      dateEl.firstChild.nodeValue =
+        (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
+    }
+  }
+
+  /* ================= 天气 =================
+     请求的是**同源**的 /weather，不是 api.open-meteo.com。
+     原因见 _redirects：iPad 2 / iOS 9 不信任 open-meteo 的 Let's Encrypt 证书，
+     直连会静默失败。走 Netlify 代理后浏览器只跟本站通信。
+     失败一律静默：绝不写 undefined，也绝不动版面。
+     HTML 里各槽位的初始内容就是「-」，所以在拿到数据之前、
+     以及从头到尾都没拿到数据的情况下，界面结构仍然完整可见。
+     拿到过数据之后再失败，则保留上一次的值 —— 陈旧数据也比丢掉信息强。 */
+  /* 写文本：复用已存在的文本节点，没有才创建一个。不新建元素。
+     v2 起天气拆成三处独立文本（左栏 / 右上 / 右下），所以要做成通用的。 */
+  function setText(el, str) {
+    var t = el.firstChild;
+    if (!t) {
+      el.appendChild(document.createTextNode(str));
+      return;
+    }
+    if (t.nodeValue !== str) { t.nodeValue = str; }
+  }
+
+  function renderWeather(d) {
+    var cur  = d.current, day = d.daily;
+    var now  = Math.round(cur.temperature_2m);
+    var hi   = Math.round(day.temperature_2m_max[0]);
+    var lo   = Math.round(day.temperature_2m_min[0]);
+    var desc = WMO[cur.weather_code] || '';
+
+    // v2 两栏版
+    setText(wxMain, desc + ' ' + now + '°');   // 左栏：描述 + 当前温度
+    setText(wxHi,   hi + '°');                 // 右栏上行，前面的红↑写在 HTML 里
+    setText(wxLo,   lo + '°');                 // 右栏下行，前面的蓝↓写在 HTML 里
+    // v1 单行版。两份都填 —— 切样式时不用重新请求天气，直接切显示即可。
+    setText(wxV1,   desc + ' ' + now + '° ' + lo + '°/' + hi + '°');
+  }
+
+  function fetchWeather() {
+    var url = '/weather'
+            + '?latitude='  + LAT
+            + '&longitude=' + LON
+            + '&current=temperature_2m,weather_code'
+            + '&daily=temperature_2m_max,temperature_2m_min'
+            + '&timezone=Asia%2FShanghai&forecast_days=1';
+
+    var xhr = new XMLHttpRequest();
+    var done = false;
+
+    function finish() { done = true; }
+
+    xhr.open('GET', url, true);
+    try { xhr.timeout = 8000; } catch (e) {}
+
+    xhr.onreadystatechange = function () {
+      if (done || xhr.readyState !== 4) { return; }
+      done = true;
+      if (xhr.status !== 200) { return; }          // 静默保持上一值
+      try {
+        var d = JSON.parse(xhr.responseText);
+        if (d && d.current && d.daily) { renderWeather(d); }
+      } catch (e) {}
+    };
+    xhr.ontimeout = finish;
+    xhr.onerror   = finish;
+
+    try { xhr.send(); } catch (e) {}
+  }
+
+  /* ================= 事件绑定 ================= */
+  // 禁掉滚动回弹与双指缩放
+  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, false);
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, false);
+
+  window.addEventListener('resize', layout, false);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(layout, 250);   // 等旋转动画结束再量尺寸
+  }, false);
+
+  /* ================= 设置面板 =================
+     面板收起时，整页只有齿轮那个 1.6rem 的热区响应，其余位置一律不响应。
+     这是对「床头误触」的处理 —— 把可误触面积压到最小，而不是靠隐式长按手势。
+
+     触摸和鼠标都要支持，两条路都得挂：
+       · iOS 上 touchstart 立即触发，而全屏 Web App 模式下合成 click 仍有
+         300ms 延迟，按下去有滞后感 —— 所以优先走 touchstart
+       · 桌面浏览器根本不派发 touchstart，只能靠 click
+     两者都挂，再用时间戳去重。preventDefault 在 iOS 上通常会挡掉随后的
+     合成 click，但各家行为不完全一致，留一道保险，免得开关被切两次。 */
+  var hideTimer = null;
+  var lastTouchTs = 0;
+
+  function armAutoHide() {                    // 15 秒无操作自动收起，
+    if (hideTimer) { clearTimeout(hideTimer); }  // 免得面板一直开着被人误碰
+    hideTimer = setTimeout(closePanel, 15000);
+  }
+  function closePanel() {
+    panelEl.classList.remove('on');
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  }
+  function togglePanel() {
+    if (panelEl.classList.contains('on')) { closePanel(); }
+    else { panelEl.classList.add('on'); armAutoHide(); }
+  }
+
+  /* 统一的「点击」绑定：触摸优先，鼠标兜底 */
+  function bindTap(el, handler) {
+    el.addEventListener('touchstart', function (e) {
+      e.preventDefault();
+      lastTouchTs = Date.now();
+      handler(e);
+    }, false);
+    el.addEventListener('click', function (e) {
+      if (Date.now() - lastTouchTs < 700) { return; }   // 刚被 touchstart 处理过，跳过
+      handler(e);
+    }, false);
+  }
+
+  bindTap(gearEl, function () { togglePanel(); });
+
+  // 面板内的按钮：事件委托，从 e.target 往上爬到带 data-v 的按钮
+  bindTap(panelEl, function (e) {
+    var n = e.target;
+    while (n && n !== panelEl) {
+      var v = n.getAttribute ? n.getAttribute('data-v') : null;
+      if (v) {
+        var seg = n.parentNode;
+        var k = (seg && seg.getAttribute) ? seg.getAttribute('data-k') : null;
+        if (k) { setSetting(k, v); }
+        break;
+      }
+      n = n.parentNode;
+    }
+    armAutoHide();
+  });
+
+  // 点面板和齿轮以外的任何地方 → 收起。
+  // 这里**不** preventDefault —— 它只是旁观，不该影响页面其他默认行为。
+  function onOutside(e) {
+    if (!panelEl.classList.contains('on')) { return; }
+    var n = e.target;
+    while (n) {
+      if (n === panelEl || n === gearEl) { return; }
+      n = n.parentNode;
+    }
+    closePanel();
+  }
+  document.addEventListener('touchstart', onOutside, false);
+  document.addEventListener('click',      onOutside, false);
+
+  // 切后台时收起面板。iOS 9 上事件名和属性都可能带 webkit 前缀，做特性检测。
+  var hidKey = ('hidden' in document) ? 'hidden' : 'webkitHidden';
+  var hidEvt = ('onvisibilitychange' in document) ? 'visibilitychange' : 'webkitvisibilitychange';
+  document.addEventListener(hidEvt, function () {
+    if (document[hidKey]) { closePanel(); }
+  }, false);
+
+  /* ================= 启动 ================= */
+  loadSettings();
+  applySettings();          // 内部依次做 layout() / initRing() / syncSegs() / tick()
+  setInterval(tick, 250);
+  // 走秒带不在这里起 —— 它由 applySettings() 按当前样式 start/stop
+
+  fetchWeather();
+  setInterval(fetchWeather, WEATHER_MS);
+})();
+</script>
+</body>
+</html>
