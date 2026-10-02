@@ -7,7 +7,11 @@
   //   · 只有没匹配到静态文件的路径才会落到 worker.js —— 我们只有 /weather 一条
   // 所以这个方案的用量是「静态无限 + 每天约 144 次动态」，远在免费额度内。
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
-  "name": "web-clock",
+  // ⚠️ 这个名字必须与 Cloudflare 侧的项目名一致，否则构建会打这条警告：
+  //     "Failed to match Worker name ... the CI system expected 233-web-clock"
+  //     而且 Cloudflare 会自动开一个 PR 来改这个文件。
+  //     （名字本身不一致也能部署成功 —— CI 会覆盖 —— 但会多出个 PR，很烦。）
+  "name": "233-web-clock",
   "main": "worker.js",
   "compatibility_date": "2026-10-02",
   "assets": {
