@@ -757,6 +757,29 @@ body.h12 .ampm { display:block; }
   margin-top:-7px;             /* (4-18)/2：把滑块压回轨道中线 */
 }
 .panel .rng:active::-webkit-slider-thumb { background:#e0e0e0; }
+/* 文本框（目前只有「位置」用）。面板里的第三种控件，前两种是 .seg 和 .step。
+   -webkit-appearance:none 是为了去掉 iOS 给输入框加的圆角内阴影。 */
+.panel .txt {
+  -webkit-appearance:none; appearance:none;
+  -webkit-flex:1; flex:1;
+  min-width:0;
+  height:26px;
+  margin-left:8px;
+  padding:0 8px;
+  border:0; border-radius:4px;
+  background:#101010;
+  color:#e0e0e0;
+  font-size:13px;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+  text-align:center;
+}
+/* 占位符压暗 —— 提示的是格式，不是值，不该和真值一样抢眼 */
+.panel .txt::-webkit-input-placeholder { color:#555; }
+.panel .txt:focus { outline:none; background:#0a0a0a; }
+body.light .panel .txt        { background:#ededed; color:#222; }
+body.light .panel .txt:focus  { background:#e4e4e4; }
+body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
+
 /* 滑杆右边的数值读出。定宽居中，拖动时数字变化才不会把滑杆挤得左右晃 */
 .panel .val {
   width:46px; text-align:center;
@@ -972,6 +995,16 @@ body.h12 .ampm { display:block; }
         <button type="button" data-v="0">关</button>
       </span>
     </div>
+    <!-- 位置 = 经纬度。⚠️ 默认【空】—— 坐标是隐私，仓库是公开的，
+         所以仓库里不带任何真实位置，由使用者在自己的设备上填一次。
+         没填时天气几栏显示 "-"，并且不发任何网络请求。
+         填成 "纬度, 经度"，例如 "39.90, 116.40"。 -->
+    <div class="row" data-k="geo">
+      <span class="lbl">位置</span>
+      <input class="txt" type="text" id="geo-in"
+             placeholder="纬度, 经度" value=""
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
   </div>
 </div>
 
@@ -980,8 +1013,9 @@ body.h12 .ampm { display:block; }
   'use strict';
 
   /* ================= 配置 ================= */
-  var LAT = 0.00;          // 示例坐标
-  var LON = 0.00;
+  /* ⚠️ 这里【刻意不留任何默认坐标】。位置是隐私，仓库是公开的 ——
+     经纬度由使用者在设置面板里自己填一次，存在本机 localStorage 里。
+     没填时天气几栏显示占位符 "-"，并且【不发任何网络请求】。 */
   // 天气刷新间隔：10 分钟。
   // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
   // 拉取间隔比它短一点，陈旧度才不会被"数据本身旧 + 等待下次拉取"叠加放大。
@@ -1036,6 +1070,9 @@ body.h12 .ampm { display:block; }
                     //   1000     = 连续（1000ms 恰好等于连续，见 ringSeconds）
                     // 曾经还有独立的 ringMode 设置项，现在由这个数唯一决定，已删除。
                     ringMs:360,
+                    // 位置：经纬度，填成 "纬度, 经度"。**默认空** ——
+                    // 仓库是公开的，这里不带任何真实坐标（见文件顶部「配置」那段）。
+                    geo:'',
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
@@ -1119,6 +1156,8 @@ body.h12 .ampm { display:block; }
       if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
         settings.dataSrc = o.dataSrc;
       }
+      // 经纬度：只收字符串，格式合法性交给 parseGeo() 判（它拿不准就当没填）
+      if (typeof o.geo === 'string') { settings.geo = o.geo; }
       settings.ringMs = clampRingMs(o.ringMs);   // clamp 自己会把脏值/缺失退回默认
       // 旧存档迁移：v4.7 及以前把"关/连续"存在独立的 ringMode 里。
       // 现在它们由 ringMs 的两个哨兵值表示，所以把旧值翻译过来 ——
@@ -1203,6 +1242,10 @@ body.h12 .ampm { display:block; }
     if (rng) { rng.value = ms; }              // 只在整刷时写滑杆
     var el2 = document.getElementById('ring-ms-val');
     if (el2) { setText(el2, ringLabel(ms)); }
+
+    // 位置：正在编辑时【不回写】，否则会把用户打到一半的字覆盖掉
+    var gi = document.getElementById('geo-in');
+    if (gi && document.activeElement !== gi) { gi.value = settings.geo || ''; }
   }
 
   /* 把走带的【状态】落一遍：开关类 + 帧循环。
@@ -1871,17 +1914,41 @@ body.h12 .ampm { display:block; }
     sunToday = null;
   }
 
+  /* 把设置里的 "纬度, 经度" 解析成两个数。解析不出来就返回 null。
+
+     容忍这些写法（都是手输时常见的）：
+       "39.90, 116.40" / "39.90 116.40" / "39.90，116.40"（中文逗号）
+     范围按地球实际范围卡：纬度 ±90、经度 ±180。越界视为没填。
+     返回 null 时 fetchWeather() 会直接显示占位符、【不发请求】。 */
+  function parseGeo() {
+    var s = String(settings.geo == null ? '' : settings.geo)
+              .replace(/，/g, ',')            // 中文逗号 → 英文
+              .replace(/^\s+|\s+$/g, '');     // 两端空白
+    if (!s) { return null; }
+    var parts = s.split(/[,\s]+/);
+    if (parts.length < 2) { return null; }
+    var lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+    if (isNaN(lat) || isNaN(lon)) { return null; }
+    if (lat < -90  || lat > 90)   { return null; }
+    if (lon < -180 || lon > 180)  { return null; }
+    return { lat: lat, lon: lon };
+  }
+
   function fetchWeather() {
     if (settings.dataSrc === 'demo') { renderWeather(demoData()); return; }
     if (settings.dataSrc === 'offline') { showWeatherPlaceholder(); return; }
 
+    var geo = parseGeo();
+    if (!geo) { showWeatherPlaceholder(); return; }   // 没填坐标 → 占位，且不发请求
+
     var url = '/weather'
-            + '?latitude='  + LAT
-            + '&longitude=' + LON
+            + '?latitude='  + geo.lat
+            + '&longitude=' + geo.lon
             + '&current=temperature_2m,weather_code'
             + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset'
             + '&hourly=precipitation_probability,weather_code'
-            + '&timezone=Asia%2FShanghai&forecast_days=2'   // 2 天：保证临近午夜时"下一个整点"也在数组里
+            // timezone=auto：由坐标自己定。写死时区等于又泄露一次位置
+            + '&timezone=auto&forecast_days=2'   // 2 天：保证临近午夜时"下一个整点"也在数组里
             + '&_=' + Date.now();   // 破缓存参数。
                                     // Netlify 的 200 rewrite 代理有可能缓存上游响应，
                                     // 加个每次都变的参数可以确保每次都真的打到上游。
@@ -1938,6 +2005,9 @@ body.h12 .ampm { display:block; }
     hideTimer = setTimeout(closePanel, 15000);
   }
   function closePanel() {
+    // ⚠️ 正在往文本框里打字时不要收 —— 否则打到一半面板就没了。
+    //    （点面板外面会先让输入框失焦，所以那种情况仍会正常收起。）
+    if (geoIn && document.activeElement === geoIn) { armAutoHide(); return; }
     panelEl.classList.remove('on');
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
   }
@@ -1992,6 +2062,23 @@ body.h12 .ampm { display:block; }
      用原生 input[type=range] 自带的行为，只在事件里取值。
      ⚠️ 拖动中【不写 localStorage】：iOS 的 localStorage 是同步的，
         拖动时每帧写一次会在 A5 上拖出卡顿。存盘放到松手（change）时做。 */
+  /* ── 位置输入框 ──
+     input  → 实时存值（保持面板开着）
+     change → 失焦时才触发，这时才存盘 + 重新取天气（打字中途反复请求没意义） */
+  var geoIn = document.getElementById('geo-in');
+  if (geoIn && geoIn.addEventListener) {
+    geoIn.addEventListener('input', function () {
+      settings.geo = geoIn.value;
+      armAutoHide();
+    }, false);
+    geoIn.addEventListener('change', function () {
+      settings.geo = geoIn.value;
+      saveSettings();
+      fetchWeather();     // 坐标可能刚改 → 立刻重取，不用等下一个刷新周期
+      armAutoHide();
+    }, false);
+  }
+
   var ringRange = document.getElementById('ring-range');
   if (ringRange && ringRange.addEventListener) {
     var onSlide = function (persist) {
