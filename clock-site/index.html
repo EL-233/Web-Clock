@@ -356,17 +356,18 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 }
 
 /* ============================================================
-   冒号（只在 v3 走秒样式显示）
-   用字体自带的「:」字形、字号与数字相同 —— 字重和比例天然一致，
-   不用自己画圆点去凑。
+   冒号（只在 v3 走秒样式显示）—— 纯 CSS 图形，两个圆点。
 
-   插在两卡之间但【不改变两卡间距】：
-     #hh 右外边距 .08  +  冒号 .40  +  #mm 左外边距 .08  =  .56
-     正好等于原来两卡之间的黑边宽度（.28 + .28）。
-   所以走带的环盒、圆角、周长、根字号系数、居中值全都不用动。
+   为什么弃用字体的「:」字形（上一版试过，实机上完全看不到）：
+     · 字体栈是 Menlo → JetBrains Mono，但 iPad 落 Menlo、电脑落 JetBrains Mono，
+       两家冒号字形不同，跨设备本来就不可控
+     · 更根本：字形步进宽 0.6em ≈ 1.54rem，而这里的槽只有 0.40rem。
+       只能靠 text-align:center 把溢出的字形居中 —— 这个行为依赖引擎实现，
+       一旦它不按预期居中，墨迹就落到槽外、被相邻卡片盖住。
+   两个圆点是确定性的：直径、间距、位置全部可控，与字体和引擎都无关。
 
-   冒号的盒子（.40）比字形步进宽（.6em = 1.54rem）窄，但字形墨迹只有约 .25rem
-   且居中，所以不会溢出、也不裁切（这里不加 overflow:hidden）。
+   槽宽 .40 与两侧外边距各 .08 相加 = .56rem，
+   与原来两卡之间的黑边宽度相同 —— 所以走带几何完全不用动。
 
    align-self:center 是为了覆盖 .clock 的 flex-end ——
    否则它会被当成"又一张卡片"一起底对齐。
@@ -375,12 +376,15 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:none;                 /* 默认不显示，下面的 style-v3 才放出来 */
   -webkit-align-self:center; align-self:center;
   width:.40rem;
-  font-family:Menlo,'JetBrains Mono',monospace;
-  font-size:2.56rem;            /* = .card 字号 */
-  line-height:1;
-  text-align:center;
-  color:#909090;
 }
+.colon i {
+  display:block;
+  width:.30rem; height:.30rem;  /* 圆点直径 */
+  margin:0 auto;
+  border-radius:50%;
+  background:#909090;
+}
+.colon i + i { margin-top:.36rem; }
 body.style-v3 .colon { display:block; }
 body.style-v3 #hh    { margin-right:.08rem; }
 body.style-v3 #mm    { margin-left:.08rem; }
@@ -478,7 +482,7 @@ body.light .ampm        { color:#777; }     /* 深色主题那个 #8a8a8a 放在
 body.light .arw-up      { border-bottom-color:#d93a3a; }    /* 浅色底上要压深一档 */
 body.light .arw-dn      { border-top-color:#2f7fd4; }
 body.light .gear i      { background:#b4b4b4; }
-body.light .colon       { color:#5c5c5c; }
+body.light .colon i     { background:#5c5c5c; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 .06rem .34rem rgba(0,0,0,.16); }
@@ -637,13 +641,9 @@ body.h12 .ampm { display:block; }
       <div class="half flap-bottom"><span>00</span></div>
       <span class="ampm" id="ampm"></span>
     </div>
-    <!-- 冒号：用字体自带的「:」字形，字号与数字相同（不是 CSS 画的圆点）。
-         1Hz 呼吸 —— 整秒最亮、中途渐灭，由 JS 逐帧写 opacity。
-
-         它插在两卡之间，但【两卡间距保持不变】：CSS 里把 #hh 的右外边距和
-         #mm 的左外边距从 .28 收到 .08，中间刚好放 0.40 宽的冒号，
-         合计仍是 0.56rem。这样走带的几何、根字号系数、居中值全都不用动。 -->
-    <div class="colon" id="colon">:</div>
+    <!-- 冒号：纯 CSS 图形（两个圆点），已弃用字体的「:」字形 —— 原因见 CSS 注释。
+         1Hz 呼吸：整秒最亮、中途渐灭，由 JS 逐帧写 opacity。 -->
+    <div class="colon" id="colon"><i></i><i></i></div>
 
     <!-- 分：两位一起翻 -->
     <div class="card flip" id="mm">
