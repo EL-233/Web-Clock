@@ -252,14 +252,10 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:none;
   pointer-events:none;
 }
-/* 走带配色。两个主题方向相反：深色底往黑里压，浅色底往白里提。
-   进度带刻意压到"只是暗示"的程度（深色 #3a3a3a / 浅色 #c4c4c4）。
-   想再淡/再明显就改这两个值 —— 纯配色，不影响任何几何。
-
-   ⚠️ 底衬环【不跟着压】：它承载呼吸动效，太暗的话 0.15~1.0 的透明度变化白做。
-      所以只压"已走"部分，让进度成为一层很淡的暗示；"未走"部分仍保留
-      能看出呼吸的强度。两者始终是 已走(#3a3a3a) > 未走峰值(#1e1e1e)，所以分得清。 */
-.ring-track { stroke:#1e1e1e; }   /* 未走部分：由 JS 逐帧改 opacity 做呼吸 */
+/* 走带配色：现在【只剩已走部分】。
+   未走部分连同它那个两秒周期的呼吸已经删掉 ——
+   "暗示剩余秒数"的职责改由两卡之间的冒号承担（它做 1Hz 呼吸）。
+   深色 #3a3a3a / 浅色 #c4c4c4，都只是很淡的一层暗示。 */
 .ring-fill  { stroke:#3a3a3a; }   /* 已走部分：只是暗示 */
 .ring-flash { stroke:#3a3a3a; }   /* 满圈淡出那一层，与进度带同色，否则淡出瞬间会看出跳变 */
 
@@ -359,6 +355,36 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   line-height:1.44rem;        /* 必须与卡片高度一致，否则上下两半接缝会错位 */
 }
 
+/* ============================================================
+   冒号（只在 v3 走秒样式显示）
+   用字体自带的「:」字形、字号与数字相同 —— 字重和比例天然一致，
+   不用自己画圆点去凑。
+
+   插在两卡之间但【不改变两卡间距】：
+     #hh 右外边距 .08  +  冒号 .40  +  #mm 左外边距 .08  =  .56
+     正好等于原来两卡之间的黑边宽度（.28 + .28）。
+   所以走带的环盒、圆角、周长、根字号系数、居中值全都不用动。
+
+   冒号的盒子（.40）比字形步进宽（.6em = 1.54rem）窄，但字形墨迹只有约 .25rem
+   且居中，所以不会溢出、也不裁切（这里不加 overflow:hidden）。
+
+   align-self:center 是为了覆盖 .clock 的 flex-end ——
+   否则它会被当成"又一张卡片"一起底对齐。
+   ============================================================ */
+.colon {
+  display:none;                 /* 默认不显示，下面的 style-v3 才放出来 */
+  -webkit-align-self:center; align-self:center;
+  width:.40rem;
+  font-family:Menlo,'JetBrains Mono',monospace;
+  font-size:2.56rem;            /* = .card 字号 */
+  line-height:1;
+  text-align:center;
+  color:#909090;
+}
+body.style-v3 .colon { display:block; }
+body.style-v3 #hh    { margin-right:.08rem; }
+body.style-v3 #mm    { margin-left:.08rem; }
+
 /* 半片：各占 50%，负责裁出字形的上半 / 下半 */
 .half {
   position:absolute; left:0; width:100%; height:50%;
@@ -452,7 +478,7 @@ body.light .ampm        { color:#777; }     /* 深色主题那个 #8a8a8a 放在
 body.light .arw-up      { border-bottom-color:#d93a3a; }    /* 浅色底上要压深一档 */
 body.light .arw-dn      { border-top-color:#2f7fd4; }
 body.light .gear i      { background:#b4b4b4; }
-body.light .ring-track  { stroke:#dfdfdf; }   /* 同样为了呼吸看得出来，比上一版实一点 */
+body.light .colon       { color:#5c5c5c; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 .06rem .34rem rgba(0,0,0,.16); }
@@ -591,10 +617,6 @@ body.h12 .ampm { display:block; }
 
          三条 path 的 d 必须完全一致，才能严丝合缝叠在一起。 -->
     <svg class="ring" viewBox="0 0 942 414" aria-hidden="true">
-      <!-- 未走部分：opacity 由 JS 逐帧做「一秒一次」的呼吸 -->
-      <path class="ring-track" id="ring-track"
-            d="M471 3.5H841A97.5 97.5 0 0 1 938.5 101V313A97.5 97.5 0 0 1 841 410.5H101A97.5 97.5 0 0 1 3.5 313V101A97.5 97.5 0 0 1 101 3.5H471"
-            fill="none" stroke-width="7" stroke-linecap="butt"/>
       <path class="ring-fill" id="ring-fill"
             d="M471 3.5H841A97.5 97.5 0 0 1 938.5 101V313A97.5 97.5 0 0 1 841 410.5H101A97.5 97.5 0 0 1 3.5 313V101A97.5 97.5 0 0 1 101 3.5H471"
             fill="none" stroke-width="7" stroke-linecap="butt"/>
@@ -615,6 +637,14 @@ body.h12 .ampm { display:block; }
       <div class="half flap-bottom"><span>00</span></div>
       <span class="ampm" id="ampm"></span>
     </div>
+    <!-- 冒号：用字体自带的「:」字形，字号与数字相同（不是 CSS 画的圆点）。
+         1Hz 呼吸 —— 整秒最亮、中途渐灭，由 JS 逐帧写 opacity。
+
+         它插在两卡之间，但【两卡间距保持不变】：CSS 里把 #hh 的右外边距和
+         #mm 的左外边距从 .28 收到 .08，中间刚好放 0.40 宽的冒号，
+         合计仍是 0.56rem。这样走带的几何、根字号系数、居中值全都不用动。 -->
+    <div class="colon" id="colon">:</div>
+
     <!-- 分：两位一起翻 -->
     <div class="card flip" id="mm">
       <div class="half static-top"><span>00</span></div>
@@ -913,7 +943,8 @@ body.h12 .ampm { display:block; }
   var mmCard = new FlipCard('mm');
   var ssCard = new StaticCard('ss');
 
-  /* ================= 走秒带（v3 样式） =================
+  /* ========= 走秒带 + 冒号呼吸（v3 样式）=========
+     这个 rAF 循环驱动两样东西：走秒带的进度、两卡之间冒号的 1Hz 呼吸。
      进度 = 本分钟已过的【小数秒】/ 60，所以环是连续推进而不是每秒跳一格。
 
      用 requestAnimationFrame 驱动 —— 它跟着屏幕刷新走，iPad 上就是 60Hz 跑满；
@@ -930,9 +961,9 @@ body.h12 .ampm { display:block; }
      SVG 元素上的 CSS 动画在 Safari 9 上没把握，而这里本来就有逐帧循环可用。 */
   var FLASH_MS = 650;      // 满圈淡出的时长
 
-  var TRACK_MIN = 0.15;    // 呼吸最暗时的透明度（不做到 0，留一点空间参照）
+  var COLON_MIN = 0.20;    // 冒号呼吸最暗时的透明度
 
-  var ringTrack = document.getElementById('ring-track');
+  var colonEl   = document.getElementById('colon');
   var ringFill  = document.getElementById('ring-fill');
   var ringFlash = document.getElementById('ring-flash');
   var ringLen   = 2517;
@@ -971,13 +1002,13 @@ body.h12 .ampm { display:block; }
     // 短于约一个设备像素就整条隐藏；只影响每分钟开头 ~40ms，肉眼无感。
     ringFill.setAttribute('visibility', drawn < 1.5 ? 'hidden' : 'visible');
 
-    // 未走部分的「呼吸」：**两秒一个周期**，偶数整秒最亮、奇数整秒最暗。
-    // 相位取在整秒最亮，是为了和秒针的节拍对上；周期取 2 秒是为了更缓、
-    // 更像背景的一点起伏而不是在闪。
-    // 已走部分盖在它上面，所以这个动效只作用在没走到的区段。
-    if (ringTrack) {
-      var beat = 0.5 + 0.5 * Math.cos(sec * Math.PI);
-      ringTrack.setAttribute('opacity', TRACK_MIN + (1 - TRACK_MIN) * beat);
+    // 冒号的一秒呼吸：**周期 1 秒（1Hz）**，整秒最亮、中途渐灭。
+    // 相位取整秒最亮，是为了和秒针的节拍对上 —— 跳秒那一刻亮一下。
+    // （原来那个「未走部分的两秒呼吸」已随底衬环一起删掉；
+    //   现在这一层是这个 rAF 循环唯一驱动的非 SVG 元素。）
+    if (colonEl) {
+      var beat = 0.5 + 0.5 * Math.cos(sec * 2 * Math.PI);
+      colonEl.style.opacity = COLON_MIN + (1 - COLON_MIN) * beat;
     }
 
     if (flashT0 && ringFlash) {
