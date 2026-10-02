@@ -1,0 +1,19 @@
+{
+  // Cloudflare Workers 的部署配置。用 Git 集成部署时 Cloudflare 会自动读这个文件
+  // （构建命令就是 `npx wrangler deploy`，它会去找这份配置）。
+  //
+  // 静态站点用 Workers 的「静态资源」功能托管：
+  //   · 静态请求（/ 、/fonts/*.ttf…）【免费且不计费】，也【不会】经过 Worker 脚本
+  //   · 只有没匹配到静态文件的路径才会落到 worker.js —— 我们只有 /weather 一条
+  // 所以这个方案的用量是「静态无限 + 每天约 144 次动态」，远在免费额度内。
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "web-clock",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-02",
+  "assets": {
+    // 站点内容在这个子目录里。路径相对于本文件（仓库根）。
+    "directory": "./clock-site",
+    // 绑定名，worker.js 里用 env.ASSETS 取它
+    "binding": "ASSETS"
+  }
+}
