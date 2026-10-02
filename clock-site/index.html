@@ -385,9 +385,22 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   background:#909090;
 }
 .colon i + i { margin-top:.36rem; }
-body.style-v3 .colon { display:block; }
-body.style-v3 #hh    { margin-right:.08rem; }
-body.style-v3 #mm    { margin-left:.08rem; }
+/* ── 冒号开关 ──
+   整套规则都挂在 body.colon-on 上。关闭时这些规则一条都不生效，
+   卡片外边距回到 .card 原本的 .28 —— 于是布局与"加冒号之前"完全一致，
+   不会留下一段 0.40rem 的空洞。 */
+body.colon-on .colon             { display:block; }
+body.colon-on .colon--2          { display:none; }        /* 默认只有时分之间那个 */
+body.colon-on.style-v1 .colon--2 { display:block; }       /* 平衡样式才要第二个（分∣秒） */
+
+/* 冒号插进【原有间隙】里：把相邻的两条外边距从 .28 各收到 .08，
+   中间刚好放 0.40 宽的冒号，合计仍是 .56rem。
+   所以三种样式的卡组宽度都不变 ——
+   走带几何、根字号系数、居中 padding-top 全都不用动。 */
+body.colon-on #hh                { margin-right:.08rem; }
+body.colon-on #mm                { margin-left:.08rem; }
+body.colon-on.style-v1 #mm       { margin-right:.08rem; }  /* 平衡样式：分卡右侧也要让位 */
+body.colon-on.style-v1 #ss       { margin-left:.08rem; }
 
 /* 半片：各占 50%，负责裁出字形的上半 / 下半 */
 .half {
@@ -652,6 +665,10 @@ body.h12 .ampm { display:block; }
       <div class="half flap-top"><span>00</span></div>
       <div class="half flap-bottom"><span>00</span></div>
     </div>
+    <!-- 第二个冒号：只在「平衡」样式显示（分∣秒之间）。
+         层次与走秒样式里秒卡与分卡之间的间距保持原样。 -->
+    <div class="colon colon--2" id="colon2"><i></i><i></i></div>
+
     <!-- 秒：只有两块静态半片，不翻页。
          这台设备要 24 小时常亮，秒位翻页等于 50% 的时间都在跑动画。
          card--sm 让它缩到一半；.clock 的 flex-end 让它以左下角为锚点对齐。 -->
@@ -705,6 +722,13 @@ body.h12 .ampm { display:block; }
       <button type="button" data-v="v3">走秒</button>
     </span>
   </div>
+  <div class="row">
+    <span class="lbl">冒号</span>
+    <span class="seg" data-k="colon">
+      <button type="button" data-v="1">开</button>
+      <button type="button" data-v="0">关</button>
+    </span>
+  </div>
 </div>
 
 <script>
@@ -755,7 +779,7 @@ body.h12 .ampm { display:block; }
      存不住就退回内存里的默认值。
      —— 设置记不住可以接受，但它绝不能把时钟本身搞挂。 */
   var STORE_KEY = 'clockSettings';
-  var settings  = { h12:false, theme:'dark', style:'v2' };
+  var settings  = { h12:false, theme:'dark', style:'v2', colon:true };
 
   var canStore = (function () {
     try {
@@ -777,6 +801,7 @@ body.h12 .ampm { display:block; }
       if (o.style === 'v1'  || o.style === 'v2' || o.style === 'v3') {
         settings.style = o.style;
       }
+      if (o.colon === true || o.colon === false)     { settings.colon = o.colon; }
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
 
@@ -797,6 +822,7 @@ body.h12 .ampm { display:block; }
       var seg  = segs[i];
       var k    = seg.getAttribute('data-k');
       var cur  = (k === 'h12')   ? (settings.h12 ? '1' : '0')
+               : (k === 'colon') ? (settings.colon ? '1' : '0')
                : (k === 'theme') ? settings.theme
                :                   settings.style;
       var btns = seg.getElementsByTagName('button');
@@ -818,10 +844,12 @@ body.h12 .ampm { display:block; }
     setClass(bodyEl, 'style-v2', settings.style === 'v2');
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
+    setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
 
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
-    if (settings.style === 'v3') { startRing(); } else { stopRing(); }
+    // 环只要 v3；但冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环
+    if (settings.style === 'v3' || settings.colon) { startRing(); } else { stopRing(); }
     syncSegs();
     tick();       // 12/24 制切换后立刻按新格式重画
   }
@@ -830,6 +858,7 @@ body.h12 .ampm { display:block; }
     if (k === 'h12')   { settings.h12   = (v === '1'); }
     if (k === 'theme') { settings.theme = (v === 'light') ? 'light' : 'dark'; }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
+    if (k === 'colon') { settings.colon = (v === '1'); }
     saveSettings();
     applySettings();
   }
@@ -963,7 +992,8 @@ body.h12 .ampm { display:block; }
 
   var COLON_MIN = 0.20;    // 冒号呼吸最暗时的透明度
 
-  var colonEl   = document.getElementById('colon');
+  var colonEl   = document.getElementById('colon');    // 时∣分
+  var colon2El  = document.getElementById('colon2');   // 分∣秒（只在"平衡"样式显示）
   var ringFill  = document.getElementById('ring-fill');
   var ringFlash = document.getElementById('ring-flash');
   var ringLen   = 2517;
@@ -985,40 +1015,45 @@ body.h12 .ampm { display:block; }
 
   function updateRing() {
     if (!ringFill) { return; }
-    // 不用 v3 样式时环是隐藏的，没必要每帧算（切到 v3 时 initRing 会重画一次）
-    if (settings.style !== 'v3' && !flashT0) { return; }
+    // 环只管 v3；冒号呼吸三种样式都要。两者都不需要、又没有正在播的淡出，就直接返回。
+    var ringOn  = (settings.style === 'v3');
+    var colonOn = settings.colon;
+    if (!ringOn && !colonOn && !flashT0) { return; }
 
     var now = new Date();
     var sec = now.getSeconds() + now.getMilliseconds() / 1000;
 
-    // 回绕检测：本帧秒数明显小于上一帧 → 刚跨过整分
-    if (ringPrev >= 0 && sec + 0.5 < ringPrev) { flashT0 = Date.now(); }
-    ringPrev = sec;
+    if (ringOn) {
+      // 回绕检测：本帧秒数明显小于上一帧 → 刚跨过整分
+      if (ringPrev >= 0 && sec + 0.5 < ringPrev) { flashT0 = Date.now(); }
+      ringPrev = sec;
 
-    var drawn = ringLen * (sec / 60);
-    ringFill.setAttribute('stroke-dashoffset', ringLen - drawn);
-    // 整分那一瞬 drawn = 0，而有些渲染器会给「长度为零的虚线」画出一条发丝线
-    // —— 在 iPad 上看得见、桌面浏览器看不见，正是这一类的引擎差异。
-    // 短于约一个设备像素就整条隐藏；只影响每分钟开头 ~40ms，肉眼无感。
-    ringFill.setAttribute('visibility', drawn < 1.5 ? 'hidden' : 'visible');
+      var drawn = ringLen * (sec / 60);
+      ringFill.setAttribute('stroke-dashoffset', ringLen - drawn);
+      // 整分那一瞬 drawn = 0，而有些渲染器会给「长度为零的虚线」画出一条发丝线
+      // —— 在 iPad 上看得见、桌面浏览器看不见，正是这一类的引擎差异。
+      // 短于约一个设备像素就整条隐藏；只影响每分钟开头 ~40ms，肉眼无感。
+      ringFill.setAttribute('visibility', drawn < 1.5 ? 'hidden' : 'visible');
 
-    // 冒号的一秒呼吸：**周期 1 秒（1Hz）**，整秒最亮、中途渐灭。
-    // 相位取整秒最亮，是为了和秒针的节拍对上 —— 跳秒那一刻亮一下。
-    // （原来那个「未走部分的两秒呼吸」已随底衬环一起删掉；
-    //   现在这一层是这个 rAF 循环唯一驱动的非 SVG 元素。）
-    if (colonEl) {
-      var beat = 0.5 + 0.5 * Math.cos(sec * 2 * Math.PI);
-      colonEl.style.opacity = COLON_MIN + (1 - COLON_MIN) * beat;
+      if (flashT0 && ringFlash) {
+        var k = (Date.now() - flashT0) / FLASH_MS;
+        if (k >= 1) {
+          flashT0 = 0;
+          ringFlash.setAttribute('opacity', 0);
+        } else {
+          ringFlash.setAttribute('opacity', 0.45 * (1 - k));
+        }
+      }
     }
 
-    if (flashT0 && ringFlash) {
-      var k = (Date.now() - flashT0) / FLASH_MS;
-      if (k >= 1) {
-        flashT0 = 0;
-        ringFlash.setAttribute('opacity', 0);
-      } else {
-        ringFlash.setAttribute('opacity', 0.45 * (1 - k));
-      }
+    // 冒号的呼吸：**周期 1 秒（1Hz）**，整秒最亮、中途渐灭 ——
+    // 相位取整秒最亮，是为了和秒针的节拍对上，跳秒那一刻亮一下。
+    // 三种样式共用同一份相位，所以两个冒号（平衡样式）是同步的。
+    if (colonOn) {
+      var beat = 0.5 + 0.5 * Math.cos(sec * 2 * Math.PI);
+      var op = COLON_MIN + (1 - COLON_MIN) * beat;
+      if (colonEl)  { colonEl.style.opacity  = op; }
+      if (colon2El) { colon2El.style.opacity = op; }
     }
   }
 
