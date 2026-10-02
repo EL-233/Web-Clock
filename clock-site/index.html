@@ -291,6 +291,23 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   white-space:nowrap;
 }
 
+/* 最右栏：未来 1 小时 —— 与"高低温"那栏同构（上下两行）。
+   同样定宽：天气描述最长 4 个汉字、概率最长 "100%"，
+   不定宽的话这些长短变化会把整条底栏推得左右晃。 */
+.wx-next {
+  width:2.6rem;
+  margin-left:.5rem;
+  display:-webkit-flex; display:flex;
+  -webkit-flex-direction:column; flex-direction:column;
+  -webkit-justify-content:center; justify-content:center;
+  font-size:.44rem;
+  line-height:.58rem;
+  letter-spacing:.02em;
+}
+.wx-n1, .wx-n2 { text-align:center; white-space:nowrap; }
+.wx-next .tag  { color:#555; margin-right:.12rem; }   /* "1h" 只是标注，压暗 */
+body.light .wx-next .tag { color:#b0b0b0; }
+
 /* 冷热箭头用 border 三角画，不用 ↑ ↓ 字符 ——
    那些字符在 Avenir Next / 苹方上的字重和基线位置不一致，跨设备观感不稳。
    三角的尺寸和颜色完全可控。 */
@@ -692,6 +709,12 @@ body.h12 .ampm { display:block; }
         <div class="wx-hi"><i class="arw arw-up"></i><span id="wx-hi">-</span></div>
         <div class="wx-lo"><i class="arw arw-dn"></i><span id="wx-lo">-</span></div>
       </div>
+      <!-- 最右栏：未来 1 小时。结构与"高低温"那栏同构（上下两行）。
+           "1h" 是标签，压暗处理 —— 它只是说明这两行说的是什么，不是数据。 -->
+      <div class="wx-next">
+        <div class="wx-n1"><span class="tag">1h</span><span id="wx-next-w"></span></div>
+        <div class="wx-n2" id="wx-next-p"></div>
+      </div>
     </div>
     <!-- v1 版：单行「描述 当前温度 最低/最高」，无箭头 -->
     <div class="wx-v1" id="wx-v1">-</div>
@@ -748,7 +771,10 @@ body.h12 .ampm { display:block; }
   /* ================= 配置 ================= */
   var LAT = 0.00;          // 示例坐标
   var LON = 0.00;
-  var WEATHER_MS = 20 * 60 * 1000;   // 天气刷新间隔：20 分钟
+  // 天气刷新间隔：10 分钟。
+  // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
+  // 拉取间隔比它短一点，陈旧度才不会被"数据本身旧 + 等待下次拉取"叠加放大。
+  var WEATHER_MS = 10 * 60 * 1000;
 
   var WEEK = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
 
@@ -773,6 +799,8 @@ body.h12 .ampm { display:block; }
   var wxHi    = document.getElementById('wx-hi');     // v2 右栏上行：最高温
   var wxLo    = document.getElementById('wx-lo');     // v2 右栏下行：最低温
   var wxV1    = document.getElementById('wx-v1');     // v1 单行版
+  var wxNextW = document.getElementById('wx-next-w'); // v2/v3 最右栏上行：未来 1 小时的天气
+  var wxNextP = document.getElementById('wx-next-p'); // v2/v3 最右栏下行：那一小时的降雨概率
   var ampmEl  = document.getElementById('ampm');
   var gearEl  = document.getElementById('gear');
   var panelEl = document.getElementById('panel');
@@ -1256,6 +1284,24 @@ body.h12 .ampm { display:block; }
     }
   }
 
+  /* 取「未来 1 小时」那一格：在 hourly 数组里按时间戳字符串找到下一个整点。
+     接口返回的 time 就是 "2026-10-02T19:00" 这种本地时间串（timezone 已生效），
+     所以直接和目标串比较即可，不用自己解析成 Date 再比。 */
+  function nextHour(hourly) {
+    if (!hourly || !hourly.time || !hourly.weather_code) { return null; }
+    var t = new Date();
+    t.setHours(t.getHours() + 1, 0, 0, 0);
+    var key = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate())
+            + 'T' + pad(t.getHours()) + ':00';
+    for (var i = 0; i < hourly.time.length; i++) {
+      if (hourly.time[i] === key) {
+        return { code: hourly.weather_code[i],
+                 prob: hourly.precipitation_probability[i] };
+      }
+    }
+    return null;   // 找不到就留空，绝不猜
+  }
+
   function renderWeather(d) {
     var cur  = d.current, day = d.daily;
     var now  = Math.round(cur.temperature_2m);
@@ -1264,13 +1310,21 @@ body.h12 .ampm { display:block; }
     var desc = WMO[cur.weather_code] || '';
 
     readSun(day);
+    var nx = nextHour(d.hourly);
 
-    // v2 两栏版
+    // v2/v3 三栏版
     setText(wxMain, desc + ' ' + now + '°');   // 左栏：描述 + 当前温度
-    setText(wxHi,   hi + '°');                 // 右栏上行，前面的红↑写在 HTML 里
-    setText(wxLo,   lo + '°');                 // 右栏下行，前面的蓝↓写在 HTML 里
+    setText(wxHi,   hi + '°');                 // 中栏上行，前面的红↑写在 HTML 里
+    setText(wxLo,   lo + '°');                 // 中栏下行，前面的蓝↓写在 HTML 里
+    if (nx) {
+      setText(wxNextW, WMO[nx.code] || '');    // 右栏上行：未来 1 小时的天气（"1h" 标签写在 HTML 里）
+      setText(wxNextP, nx.prob + '%');         // 右栏下行：那一小时的降雨概率
+    }
+
     // v1 单行版。两份都填 —— 切样式时不用重新请求天气，直接切显示即可。
-    setText(wxV1,   desc + ' ' + now + '° ' + lo + '°/' + hi + '°');
+    var v1 = desc + ' ' + now + '° ' + lo + '°/' + hi + '°';
+    if (nx) { v1 += ' · 1h ' + (WMO[nx.code] || '') + ' ' + nx.prob + '%'; }
+    setText(wxV1, v1);
   }
 
   function fetchWeather() {
@@ -1279,7 +1333,12 @@ body.h12 .ampm { display:block; }
             + '&longitude=' + LON
             + '&current=temperature_2m,weather_code'
             + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset'
-            + '&timezone=Asia%2FShanghai&forecast_days=1';
+            + '&hourly=precipitation_probability,weather_code'
+            + '&timezone=Asia%2FShanghai&forecast_days=2'   // 2 天：保证临近午夜时"下一个整点"也在数组里
+            + '&_=' + Date.now();   // 破缓存参数。
+                                    // Netlify 的 200 rewrite 代理有可能缓存上游响应，
+                                    // 加个每次都变的参数可以确保每次都真的打到上游。
+                                    // （实测 Open-Meteo 对未知参数不报错，仍然 200。）
 
     var xhr = new XMLHttpRequest();
     var done = false;
