@@ -567,7 +567,7 @@ body.auto-theme .panel .seg[data-k="theme"] { opacity:.4; }
 /* 「走带时长」只在【脉冲】模式下有意义 —— 连续模式没有缓动窗口，关闭模式没有环。
    另外两种模式下把这行压暗，和"自动主题接管时压暗主题行"是同一套做法。
    仍然可调（调到脉冲时立刻生效），只是视觉上说明"现在这项不生效"。 */
-body.ring-idle .panel .step[data-k="ringMs"] { opacity:.4; }
+body.ring-idle .panel .row[data-k="ringMs"] { opacity:.4; }
 body.light .ring-fill   { stroke:#c4c4c4; }   /* 浅底上要浅灰才不抢眼，深灰会显得脏 */
 body.light .ring-flash  { stroke:#c4c4c4; }
 body.light .panel       { background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.16); }
@@ -730,6 +730,40 @@ body.h12 .ampm { display:block; }
   -webkit-tap-highlight-color:transparent;
 }
 .panel .step button:active { background:#2a2a2a; }
+
+/* 横向滑杆（走带松紧）。
+   用原生 input[type=range] 而【不是】自绘 div：原生自带完整的触摸拖动行为
+   —— 手指划出元素范围也不丢、划多快都不掉，这些自己实现很容易有边角问题。
+   iOS 9 上 -webkit-appearance:none 之后，轨道和滑块都能完全自定样子，
+   能和面板其余控件用同一套配色。
+   ⚠️ 轨道伪元素和滑块伪元素都要写 -webkit-appearance:none，
+      少了哪一个在某些 WebKit 版本上都会退回系统外观。 */
+.panel .rng {
+  -webkit-appearance:none; appearance:none;
+  -webkit-flex:1; flex:1;
+  min-width:0;
+  height:34px;                 /* 热区高度 = 整行高，好按 */
+  margin:0 8px;
+  padding:0;
+  background:transparent;
+  cursor:pointer;
+}
+.panel .rng::-webkit-slider-runnable-track {
+  height:4px; border-radius:2px; background:#101010;
+}
+.panel .rng::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none;
+  width:18px; height:18px; border-radius:9px;
+  background:#8a8a8a;
+  margin-top:-7px;             /* (4-18)/2：把滑块压回轨道中线 */
+}
+.panel .rng:active::-webkit-slider-thumb { background:#e0e0e0; }
+/* 滑杆右边的数值读出。定宽居中，拖动时数字变化才不会把滑杆挤得左右晃 */
+.panel .val {
+  width:46px; text-align:center;
+  font-size:12px; color:#e0e0e0;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+}
 .panel .step span {
   width:54px;
   text-align:center;
@@ -913,18 +947,15 @@ body.h12 .ampm { display:block; }
         <button type="button" data-v="pulse">脉冲</button>
       </span>
     </div>
-    <!-- 走带时长 = 脉冲那一格走完要多久，也就是"松紧"：
-         越短越紧绷（干脆、有弹性），越长越松弛（从容、绵软）。
+    <!-- 松紧 = 脉冲那一格走完要多久。左端 ≈ 瞬切，右端 ≈ 匀速（= 连续）。
+         滑杆同时改【时长】和【曲线】两样，理由见 ringSeconds 上面那段。
          只在脉冲模式下生效，另两种模式下这一行会变暗（见上面 ring-idle 那条）。
-         ⚠️ 上限 600ms 不是随便定的：缓动段必须整个落在【一秒之内】（原因见 ringSeconds），
-            逼近 1000ms 就没有停顿了，脉冲会退化成"连续但非线性"。 -->
-    <div class="row">
-      <span class="lbl">走带时长</span>
-      <span class="step" data-k="ringMs">
-        <button type="button" data-step="-">−</button>
-        <span id="ring-ms-val">360ms</span>
-        <button type="button" data-step="+">+</button>
-      </span>
+         ⚠️ 不要换成定值步进器 —— 这个轴跨了两个数量级（60→1000ms），
+            按固定毫秒步进的话，紧绷端会挤成一坨。滑杆位置走的是几何映射。 -->
+    <div class="row" data-k="ringMs">
+      <span class="lbl">松紧</span>
+      <input class="rng" type="range" id="ring-range" min="0" max="100" step="1" value="64">
+      <span class="val" id="ring-ms-val">360ms</span>
     </div>
   </div>
 
@@ -1020,10 +1051,12 @@ body.h12 .ampm { display:block; }
 
   /* 走带脉冲的"松紧" = 那一格走完要多久（毫秒）。
      短 = 紧绷（干脆、有弹性）／长 = 松弛（从容、绵软）。
-     1000ms 是【硬上限】—— 缓动段必须整个落在一秒之内（原因见 ringSeconds），
-     逼近 1000 就没有停顿了，脉冲会退化成"连续但非线性"。所以封在 600。
-     下限 150：再短就不是"快"而是"闪"了（180 是用户当初嫌"生硬"的那一档）。 */
-  var RING_MS_MIN = 150, RING_MS_MAX = 600, RING_MS_STEP = 30;
+
+     ⚠️ 上端 1000ms 是【硬上限】：缓动段必须整个落在一秒之内（原因见 ringSeconds）。
+        到了 1000ms 就没有停顿时段了，而且曲线也完全拉平成线性 ——
+        于是"脉冲"平滑地【变成"连续"】。这不是巧合：两者本来就是同一根轴的两端。
+     下端 60ms ≈ 4 帧，已经是"瞬切"而不是"动画"了。 */
+  var RING_MS_MIN = 60, RING_MS_MAX = 1000;
   var RING_MS_DEF = 360;   // ⚠️ 必须与上面 settings 字面量里的 ringMs 默认值一致
                            //    （settings 写在更前面，引用不到这个常量）
 
@@ -1031,8 +1064,21 @@ body.h12 .ampm { display:block; }
     if (typeof v !== 'number' || isNaN(v)) { return RING_MS_DEF; }
     if (v < RING_MS_MIN) { return RING_MS_MIN; }
     if (v > RING_MS_MAX) { return RING_MS_MAX; }
-    // 归到步进网格（150 + n×30）上：手改过的 localStorage 会让步进器一路走偏
-    return RING_MS_MIN + Math.round((v - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
+    return Math.round(v);
+  }
+
+  /* 滑杆位置（0..100）↔ 时长（ms）。用【几何】映射而不是线性：
+     人对时长的感知是对数的 —— 150→300ms 的变化量和 300→600ms 一样明显，
+     但后者在线性轴上要占两倍宽度。几何映射让每拖一格改的是固定【倍率】，
+     手感才均匀。副作用是 150ms 正好落在 1/3 处、360ms 落在 2/3 处，都好找。 */
+  var RING_RATIO = RING_MS_MAX / RING_MS_MIN;   // = 16.67
+
+  function ringMsToPos(ms) {
+    return Math.round(100 * Math.log(clampRingMs(ms) / RING_MS_MIN) / Math.log(RING_RATIO));
+  }
+  function ringPosToMs(pos) {
+    var t = (pos < 0 ? 0 : (pos > 100 ? 100 : pos)) / 100;
+    return Math.round(RING_MS_MIN * Math.pow(RING_RATIO, t));
   }
 
   var lastDayState = null;   // 上次判定出的昼夜状态；[自动主题]只在跨越日出/日落时才动作
@@ -1123,32 +1169,29 @@ body.h12 .ampm { display:block; }
     }
   }
 
-  /* ── 步进器 ──
-     两个：「大小」（改当前样式的倍率，每套样式各记各的）和「走带时长」（松紧）。 */
-  function bumpStep(k, dir) {
+  /* ── 步进器（只剩「大小」一个）──
+     改的是【当前选中样式】的倍率，每套样式各记各的。 */
+  function bumpStep(dir) {
     var d = (dir === '-') ? -1 : 1;
-    if (k === 'ringMs') {
-      settings.ringMs = clampRingMs(settings.ringMs + d * RING_MS_STEP);
-      saveSettings();
-      syncSteps();
-      // 不用重建任何东西：ringSeconds() 每帧现读 settings.ringMs，
-      // 帧循环本来就在跑（脉冲模式下必然在跑）。
-      return;
-    }
     var st = settings.style;
     settings.sizeMul[st] = clampMul(settings.sizeMul[st] + d * SIZE_STEP);
     saveSettings();
-    syncSteps();
+    syncControls();
     layout();          // 只影响根字号，不必走整条 applySettings()
   }
 
-  /* 把两个步进器的显示值都刷一遍。
-     "大小"显示的是【当前样式】的倍率，所以换样式也要调它。 */
-  function syncSteps() {
+  /* 把面板里的"活值"都刷一遍：步进器的显示、滑杆位置、滑杆的读数。
+     "大小"显示的是【当前样式】的倍率，所以换样式也要调它。
+     滑杆的读数在拖动时由拖动处理函数自己更新（这里不碰 —— 见那里的说明）。 */
+  function syncControls() {
     var el = document.getElementById('size-val');
     if (el) { setText(el, Math.round(settings.sizeMul[settings.style] * 100) + '%'); }
+
+    var ms  = clampRingMs(settings.ringMs);
+    var rng = document.getElementById('ring-range');
+    if (rng) { rng.value = ringMsToPos(ms); }          // 只在整刷时写滑杆位置
     var el2 = document.getElementById('ring-ms-val');
-    if (el2) { setText(el2, Math.round(settings.ringMs) + 'ms'); }
+    if (el2) { setText(el2, Math.round(ms) + 'ms'); }
   }
 
   /* 把设置落到 DOM。三处：
@@ -1178,7 +1221,7 @@ body.h12 .ampm { display:block; }
       stopRing();
     }
     syncSegs();
-    syncSteps();  // "大小"显示的是【当前样式】的倍率，换样式要跟着刷
+    syncControls();  // "大小"显示的是【当前样式】的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
   }
 
@@ -1428,11 +1471,34 @@ body.h12 .ampm { display:block; }
        对比 smoothstep：速度是对称的「0 → 峰值(正中) → 0」，机械感更重。
 
      窗口长度不再是写死的常量了 —— 它是【设置项 settings.ringMs】，用户可调
-       （150–600ms，见 clampRingMs）。默认 360ms：
+       （60–1000ms，见 clampRingMs）。默认 360ms：
        微软的时长档位是 83 / 167 / 250 / 333 ms，取最长的 333ms 一档
        （走带一格的位移比 UI 控件大，配长档）。360 ≈ 333ms。
-       这就是"松紧"：短 = 紧绷干脆，长 = 松弛绵软。 */
-  var RING_BZ   = { x1: 0.55, y1: 0.55, x2: 0, y2: 1 };
+
+     ⚠️ 曲线本身也随窗口长度变 —— 见下面 ringCurveBlend() 的说明。
+        所以"松紧"这一个滑杆改的是【时长 + 曲线】两样东西。 */
+  var RING_BZ   = { x1: 0.55, y1: 0.55, x2: 0, y2: 1 };   // 微软点到点：前重后轻
+  var RING_BZL  = { x1: 1/3,  y1: 1/3,  x2: 2/3, y2: 2/3 }; // 线性：两端点连线
+                                                           // （控制点落在 y=x 上就是匀速）
+  var RING_FROM = 360;   // ≤ 这个时长：完全用微软曲线
+
+  /* 曲线要在【微软点到点】和【线性】之间插值，插值量由窗口长度决定。
+
+     为什么长窗口必须往线性拉：
+       微软曲线把约 71% 的位移压在窗口的前 1/3 里。窗口短的时候那是"果断"；
+       窗口一长（比如 800ms），前 1/3 只有 270ms —— 观感就变成
+       "猛地一顿，然后慢慢爬"，反而不像个整体动作。拉到线性就顺了。
+
+     为什么插值从 360ms 才开始：
+       360 是默认档。若从下端就开始插值，那么用户会把滑杆停在默认位置，
+       却发现自己"什么都没动、手感却变了"。定在这一档上，
+       默认档的观感与 v4.5 完全一致。
+
+     到 1000ms 时 blend=1、曲线完全线性、窗口占满一秒 —— 即匀速，也就是"连续"。 */
+  function ringCurveBlend(ms) {
+    var b = (ms - RING_FROM) / (RING_MS_MAX - RING_FROM);
+    return b < 0 ? 0 : (b > 1 ? 1 : b);
+  }
 
   /* 三次贝塞尔的单轴求值。CSS 的 cubic-bezier 固定 P0=(0,0)、P3=(1,1)，
      只剩两个控制点，于是 B(s) = 3(1−s)²s·p1 + 3(1−s)s²·p2 + s³。 */
@@ -1441,21 +1507,24 @@ body.h12 .ampm { display:block; }
     return 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s;
   }
 
-  /* 给定进度 x（0..1）求缓动后的值 y。
+  /* 给定进度 x（0..1）求缓动后的值 y。控制点【用四个数字传，不传对象】——
+     这个函数每帧要跑一次，插值后的控制点每帧都在变，传对象就每帧多一次分配，
+     在一台要连跑几年的 A5 上没必要。
      CSS 那条曲线是"给 x 求 y"，但贝塞尔是参数式的，得先反解参数 s。
-     用【二分】而不是牛顿迭代：这条曲线在 s=1 处斜率恰好是 0
+     用【二分】而不是牛顿迭代：微软曲线在 s=1 处斜率恰好是 0
      （末控制点 (0,1) 决定了切线水平），牛顿会在那里除零；二分没这个问题。
-     X(s) 单调（x1、x2 都落在 0..1 内，这是 CSS 的硬性要求），
-     18 次迭代精度已到 1e-6 —— 一帧跑一次，开销可忽略。 */
-  function bezierY(x, c) {
+     X(s) 单调（x1、x2 都落在 0..1 内，这是 CSS 的硬性要求；
+     我们的插值端点也都在这个范围内，所以插值结果仍然单调）。
+     18 次迭代精度 1e-6 —— 折算到 36px 上是 0.0004px，绰绰有余。 */
+  function bezierY(x, x1, y1, x2, y2) {
     if (x <= 0) { return 0; }
     if (x >= 1) { return 1; }
-    var lo = 0, hi = 1, i;
+    var lo = 0, hi = 1, i, s;
     for (i = 0; i < 18; i++) {
-      var s = (lo + hi) / 2;
-      if (bezierAxis(s, c.x1, c.x2) < x) { lo = s; } else { hi = s; }
+      s = (lo + hi) / 2;
+      if (bezierAxis(s, x1, x2) < x) { lo = s; } else { hi = s; }
     }
-    return bezierAxis((lo + hi) / 2, c.y1, c.y2);
+    return bezierAxis((lo + hi) / 2, y1, y2);
   }
 
   /* 把连续的小数秒换成"每秒跳一格、但跳得缓"的秒数。
@@ -1482,9 +1551,18 @@ body.h12 .ampm { display:block; }
   function ringSeconds(sec) {
     if (settings.ringMode !== 'pulse') { return sec; }        // 连续模式：原样返回
     var n = Math.floor(sec), f = sec - n;
-    var w = settings.ringMs / 1000;                           // 窗口 = "松紧"设置，每帧现读
+
+    var ms = clampRingMs(settings.ringMs);                    // "松紧"，每帧现读
+    var w  = ms / 1000;                                       // 窗口（秒）
     if (f >= w) { return n + 1; }                             // 窗口之后：已就位，停住
-    return n + bezierY(f / w, RING_BZ);                       // 整秒起 w 秒内走完一格
+
+    // 曲线在「微软点到点」和「线性」之间按窗口长度插值 —— 见 ringCurveBlend()
+    var b  = ringCurveBlend(ms);
+    var x1 = RING_BZ.x1 + (RING_BZL.x1 - RING_BZ.x1) * b;
+    var y1 = RING_BZ.y1 + (RING_BZL.y1 - RING_BZ.y1) * b;
+    var x2 = RING_BZ.x2 + (RING_BZL.x2 - RING_BZ.x2) * b;
+    var y2 = RING_BZ.y2 + (RING_BZL.y2 - RING_BZ.y2) * b;
+    return n + bezierY(f / w, x1, y1, x2, y2);                // 整秒起 w 秒内走完一格
   }
 
   var colonEl   = document.getElementById('colon');    // 时∣分
@@ -1875,13 +1953,7 @@ body.h12 .ampm { display:block; }
         var step = n.getAttribute('data-step');
         var v    = n.getAttribute('data-v');
         if (tab)  { showPage(tab);  break; }
-        if (step) {
-          // 两个步进器的加减按钮长得一样，要看父元素（.step）的 data-k 才知道改哪个
-          var stp = n.parentNode;
-          var sk  = (stp && stp.getAttribute) ? stp.getAttribute('data-k') : null;
-          bumpStep(sk, step);
-          break;
-        }
+        if (step) { bumpStep(step); break; }      // 步进器只剩「大小」一个
         if (v) {
           var seg = n.parentNode;
           var k = (seg && seg.getAttribute) ? seg.getAttribute('data-k') : null;
@@ -1893,6 +1965,27 @@ body.h12 .ampm { display:block; }
     }
     armAutoHide();
   });
+
+  /* ── 松紧滑杆 ──
+     这一项不走 bindTap 那套委托：滑杆需要【拖动】而不是点击。
+     用原生 input[type=range] 自带的行为，只在事件里取值。
+     ⚠️ 拖动中【不写 localStorage】：iOS 的 localStorage 是同步的，
+        拖动时每帧写一次会在 A5 上拖出卡顿。存盘放到松手（change）时做。 */
+  var ringRange = document.getElementById('ring-range');
+  if (ringRange && ringRange.addEventListener) {
+    var onSlide = function (persist) {
+      settings.ringMs = ringPosToMs(parseInt(ringRange.value, 10));
+      if (persist) { saveSettings(); }
+      // 只刷读数，不写回 ringRange.value ——
+      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差 1，滑块会跳）
+      var el = document.getElementById('ring-ms-val');
+      if (el) { setText(el, Math.round(settings.ringMs) + 'ms'); }
+      armAutoHide();     // 拖动期间别让面板 15 秒自动收起
+    };
+    // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
+    ringRange.addEventListener('input',  function () { onSlide(false); }, false);
+    ringRange.addEventListener('change', function () { onSlide(true);  }, false);
+  }
 
   // 点面板和齿轮以外的任何地方 → 收起。
   // 这里**不** preventDefault —— 它只是旁观，不该影响页面其他默认行为。
