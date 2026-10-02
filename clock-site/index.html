@@ -992,6 +992,29 @@ body.h12 .ampm { display:block; }
 
   var COLON_MIN = 0.20;    // 冒号呼吸最暗时的透明度
 
+  /* 冒号呼吸的包络：一秒一个周期，返回 0..1。
+     刻意【不用正弦】—— 正弦在高低两端一路平滑，人眼分不出"亮"与"灭"是两个状态。
+     这里做成「棱角被圆滑化的方波」：
+       [0, PLAT)                     平顶在 0（灭）
+       [PLAT, PLAT+RAMP)             smoothstep 升到 1
+       [PLAT+RAMP, 2·PLAT+RAMP)      平顶在 1（亮）
+       [2·PLAT+RAMP, 1)              smoothstep 降回 0
+     选 smoothstep 是因为它两端的斜率恰为 0 —— 与两侧平顶无缝相接，
+     这正是"方波的棱角被圆滑掉"的数学形式；用线性过渡则会留下两个折角。
+     相位：秒数为整数时 p=0 → 落在低谷，即【整秒最暗】。 */
+  var PLAT = 0.32;                    // 高低平顶各占一秒的比例
+  var RAMP = 0.5 - PLAT;              // 过渡段占比（= 0.18）
+
+  function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+  function colonBeat(sec) {
+    var p = sec - Math.floor(sec);    // 0..1 的周期相位
+    if (p < PLAT)            { return 0; }
+    if (p < PLAT + RAMP)     { return smoothstep((p - PLAT) / RAMP); }
+    if (p < 2 * PLAT + RAMP) { return 1; }
+    return 1 - smoothstep((p - (2 * PLAT + RAMP)) / RAMP);
+  }
+
   var colonEl   = document.getElementById('colon');    // 时∣分
   var colon2El  = document.getElementById('colon2');   // 分∣秒（只在"平衡"样式显示）
   var ringFill  = document.getElementById('ring-fill');
@@ -1046,11 +1069,11 @@ body.h12 .ampm { display:block; }
       }
     }
 
-    // 冒号的呼吸：**周期 1 秒（1Hz）**，整秒最亮、中途渐灭 ——
-    // 相位取整秒最亮，是为了和秒针的节拍对上，跳秒那一刻亮一下。
+    // 冒号的呼吸：周期 1 秒（1Hz），**整秒最暗、中途最亮**（与上一版相位相反）。
+    // 曲线见 colonBeat() —— 是"圆角方波"而不是正弦。
     // 三种样式共用同一份相位，所以两个冒号（平衡样式）是同步的。
     if (colonOn) {
-      var beat = 0.5 + 0.5 * Math.cos(sec * 2 * Math.PI);
+      var beat = colonBeat(sec);
       var op = COLON_MIN + (1 - COLON_MIN) * beat;
       if (colonEl)  { colonEl.style.opacity  = op; }
       if (colon2El) { colon2El.style.opacity = op; }
