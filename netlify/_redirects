@@ -1,0 +1,19 @@
+# 天气请求同源代理 —— ⚠️ 这个文件【平时不能放在 clock-site/ 里】。
+#
+# 它在两个平台上的要求正好相反：
+#   Netlify  需要它在 clock-site/ 里，靠 200 rewrite 做同源代理
+#   Cloudflare 必须没有它 —— Cloudflare 不允许 200 代理指向外部域名，
+#              文件在的话整个部署会失败（Invalid _redirects configuration, code 100324）
+#
+# 所以它平时躺在这里（Cloudflare 的静态目录之外，看不见）。
+# 要发 Netlify 时用 deploy.sh 拷进 clock-site/，发完删掉。
+#
+# 为什么需要这个代理：
+# api.open-meteo.com 用 Let's Encrypt 证书，而 iPad 2（iOS 9）不信任
+# Let's Encrypt 的根证书 ISRG Root X1（那个根从 iOS 10 才进系统信任库）。
+# 直连会静默失败 —— 页面照常显示，天气栏永远空白，且不报任何错。
+#
+# 走这条规则后，浏览器只请求自己域名下的 /weather，
+# 由 Netlify 的服务器去取真正的接口再回传。
+# Netlify 的 200 rewrite 会自动转发查询参数。
+/weather  https://api.open-meteo.com/v1/forecast  200
