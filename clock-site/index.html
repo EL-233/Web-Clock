@@ -270,13 +270,13 @@ body.style-v3 .bar--weather { margin-top:1rem; }
    定宽 + 内容居中 —— 描述长度会在「晴」和「晴间多云」之间变化，
    不定宽的话整条天气栏会重新居中、产生可见位移。 */
 .wx-main {
-  width:4.5rem;
+  width:4.0rem;   /* 4.5 → 4.0：给"未来1小时"腾位置。最坏"晴间多云 30°"仍只占 86% */
   text-align:center;
 }
 
 /* 右栏：今日最高 / 最低，上下堆叠 */
 .wx-extremes {
-  width:1.9rem;
+  width:1.4rem;   /* 1.9 → 1.4：内容"↑32°"其实只占 1.11rem，原来偏宽，匀给未来栏 */
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
@@ -295,7 +295,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
    同样定宽：天气描述最长 4 个汉字、概率最长 "100%"，
    不定宽的话这些长短变化会把整条底栏推得左右晃。 */
 .wx-next {
-  width:2.5rem;   /* 上行最长"晴间多云"=1.76rem、下行"雨滴+1h+100%"≈1.93rem，都留有余量 */
+  width:3.9rem;   /* 下行要装「图标 + 天气 + 100%」，最坏(4字描述+概率100%) 3.45rem → 88% */
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
@@ -305,6 +305,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   letter-spacing:.02em;
 }
 .wx-n1 { text-align:center; white-space:nowrap; }
+.wx-n2 .pct { margin-left:.1rem; }   /* 天气和概率之间留一点缝，否则"多云52%"会黏在一起 */
 /* 下行是「图标 + 标签 + 数值」，用 flex 居中对齐，比 inline 基线对齐更好控 */
 .wx-n2 {
   display:-webkit-flex; display:flex;
@@ -315,17 +316,28 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 .wx-next .tag { color:#555; margin:0 .1rem; }          /* "1h" 只是标注，压暗 */
 body.light .wx-next .tag { color:#b0b0b0; }
 
-/* 雨滴图标：纯 CSS 画，不用 emoji 也不用字体字形 ——
-   同一套理由：emoji 在各设备上的字形和字重差异太大，跨设备不可控。
-   做法是「一个方角 + 三个圆角」的方块，再把方角转到正上方。 */
+/* 降雨图标：三道斜线 —— 纯 CSS，不用 emoji 也不用字体字形（跨设备字形不可控）。
+   ⚠️ 刻意【不用水滴】：水滴会被读成"湿度"，而这里表达的是"降雨概率"。
+      斜线是天气图标里表达"下"的通用画法，不会跟湿度混。
+   三道线用一个元素 + 两个伪元素凑出来，省得多写 DOM。 */
 .rain {
+  position:relative;
   display:inline-block;
-  width:.18rem; height:.18rem;
-  background:#4d9fff;                                   /* 与低温箭头同一支蓝，保持配色一致 */
-  border-radius:0 50% 50% 50%;                          /* 左上角保留方角，其余磨圆 */
-  -webkit-transform:rotate(45deg); transform:rotate(45deg);   /* 把方角转到正上方，成水滴形 */
+  width:.32rem; height:.22rem;
+  margin-right:.1rem;
 }
-body.light .rain { background:#2f7fd4; }
+.rain::before, .rain::after, .rain i {
+  position:absolute; top:0;
+  width:.05rem; height:.22rem;
+  background:#4d9fff;                                  /* 与低温箭头同一支蓝，保持配色一致 */
+  -webkit-transform:rotate(18deg); transform:rotate(18deg);   /* 斜着才像"下" */
+}
+.rain::before { content:''; left:0; }
+.rain i       { left:.135rem; }
+.rain::after  { content:''; left:.27rem; }
+body.light .rain::before,
+body.light .rain::after,
+body.light .rain i { background:#2f7fd4; }
 
 /* 冷热箭头用 border 三角画，不用 ↑ ↓ 字符 ——
    那些字符在 Avenir Next / 苹方上的字重和基线位置不一致，跨设备观感不稳。
@@ -731,11 +743,11 @@ body.h12 .ampm { display:block; }
       <!-- 最右栏：未来 1 小时。结构与"高低温"那栏同构（上下两行）。
            "1h" 是标签，压暗处理 —— 它只是说明这两行说的是什么，不是数据。 -->
       <div class="wx-next">
-        <div class="wx-n1"><span id="wx-next-w"></span></div>
-        <!-- "1h" 放在百分比【之前】：它限定的是这个概率对应的时间段。
-             挂在上一行的天气描述前会让人不确定它管的是哪个数。 -->
+        <!-- 标签单独一行，作为整栏的表头 —— 它说的是下面那整行，不只是某一个数。
+             若和概率挤在同一行，最坏情况要 3.81rem，竖屏会被撑到只剩 31px 边距。 -->
+        <div class="wx-n1"><span class="tag">未来1小时</span></div>
         <div class="wx-n2">
-          <i class="rain"></i><span class="tag">1h</span><span id="wx-next-p"></span>
+          <span class="rain"><i></i></span><span id="wx-next-w"></span><span class="pct" id="wx-next-p"></span>
         </div>
       </div>
     </div>
