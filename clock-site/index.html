@@ -1014,7 +1014,7 @@ body.h12 .ampm { display:block; }
        整秒最亮（亮平顶居中） → PHASE = PLAT + RAMP + PLAT / 2  = .66
      两种写法都是从 PLAT/RAMP 推的，不是魔数，调 PLAT 时对齐自动保持。
      翻来翻去只改这一行。 */
-  var PHASE = PLAT / 2;               // = 0.16 → 整秒最暗、中途最亮
+  var PHASE = PLAT + RAMP + PLAT / 2; // = 0.66 → 整秒最亮、中途最暗
 
   function smoothstep(t) { return t * t * (3 - 2 * t); }
 
@@ -1141,6 +1141,18 @@ body.h12 .ampm { display:block; }
       dateEl.firstChild.nodeValue =
         (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
     }
+  }
+
+  /* 让 tick 紧贴【整秒】触发，而不是固定间隔轮询。
+     ⚠️ 为什么必须这样：数字要跟冒号的呼吸对齐，而冒号的相位是按真实时间
+        （getMilliseconds()）算的。若这里用 setInterval(tick, 250)，
+        秒数字最多会比真实时间晚 250ms（平均 125ms）才跳 ——
+        于是无论如何调冒号的相位都对不齐：那误差来自【显示端】，不是冒号端。
+     改成每次对齐到下一个整秒后再跑，误差只剩几毫秒。
+     顺带一个好处：从 4Hz 轮询降到 1Hz，还更省。 */
+  function scheduleTick() {
+    var ms = new Date().getMilliseconds();
+    setTimeout(function () { tick(); scheduleTick(); }, 1000 - ms + 8);
   }
 
   /* ================= 天气 =================
@@ -1299,7 +1311,7 @@ body.h12 .ampm { display:block; }
   /* ================= 启动 ================= */
   loadSettings();
   applySettings();          // 内部依次做 layout() / initRing() / syncSegs() / tick()
-  setInterval(tick, 250);
+  scheduleTick();   // 对齐整秒触发（不是固定 250ms 轮询 —— 那会让秒显示滞后）
   // 走秒带不在这里起 —— 它由 applySettings() 按当前样式 start/stop
 
   fetchWeather();
