@@ -776,6 +776,11 @@ body.h12 .ampm { display:block; }
 /* 占位符压暗 —— 提示的是格式，不是值，不该和真值一样抢眼 */
 .panel .txt::-webkit-input-placeholder { color:#555; }
 .panel .txt:focus { outline:none; background:#0a0a0a; }
+/* 填了内容但解析不出坐标 → 文字变红。
+   没有这个提示的话，格式写错会【静默失败】（不发请求、天气栏空着），
+   非常容易误判成"网络或代理坏了"。 */
+.panel .txt.bad { color:#ff8a8a; }
+body.light .panel .txt.bad { color:#c62828; }
 body.light .panel .txt        { background:#ededed; color:#222; }
 body.light .panel .txt:focus  { background:#e4e4e4; }
 body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
@@ -1246,6 +1251,16 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     // 位置：正在编辑时【不回写】，否则会把用户打到一半的字覆盖掉
     var gi = document.getElementById('geo-in');
     if (gi && document.activeElement !== gi) { gi.value = settings.geo || ''; }
+    syncGeoState();
+  }
+
+  /* 位置输入框的"填错了"提示：有内容但解析不出坐标 → 加 .bad（文字变红）。
+     空着不算错 —— 那是"还没填"，是合法状态。 */
+  function syncGeoState() {
+    var gi = document.getElementById('geo-in');
+    if (!gi) { return; }
+    var raw = String(settings.geo == null ? '' : settings.geo).replace(/^\s+|\s+$/g, '');
+    setClass(gi, 'bad', raw !== '' && !parseGeo());
   }
 
   /* 把走带的【状态】落一遍：开关类 + 帧循环。
@@ -1927,8 +1942,18 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     if (!s) { return null; }
     var parts = s.split(/[,\s]+/);
     if (parts.length < 2) { return null; }
-    var lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
-    if (isNaN(lat) || isNaN(lon)) { return null; }
+    var a = parseFloat(parts[0]), b = parseFloat(parts[1]);
+    if (isNaN(a) || isNaN(b)) { return null; }
+
+    /* 顺序归一化 —— 写反了自动纠正。
+       ⚠️ 这条推断是【唯一解】，不是猜：纬度的合法范围只有 ±90，
+          所以 |第一个数| > 90 时它不可能是纬度，只能是经度 → 交换。
+          反过来（第一个数 ≤ 90）不能交换，因为那才是正常的"纬度, 经度"。
+       实际踩过：用户填了 "114.13, 22.69"（经度在前），被范围校验挡掉、
+       一个请求都没发、页面上毫无提示，很容易误判成"代理坏了"。 */
+    var lat, lon;
+    if (Math.abs(a) > 90) { lat = b; lon = a; } else { lat = a; lon = b; }
+
     if (lat < -90  || lat > 90)   { return null; }
     if (lon < -180 || lon > 180)  { return null; }
     return { lat: lat, lon: lon };
@@ -2069,11 +2094,13 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   if (geoIn && geoIn.addEventListener) {
     geoIn.addEventListener('input', function () {
       settings.geo = geoIn.value;
+      syncGeoState();     // 打到一半就先把"填错了"标出来，不用等失焦
       armAutoHide();
     }, false);
     geoIn.addEventListener('change', function () {
       settings.geo = geoIn.value;
       saveSettings();
+      syncGeoState();
       fetchWeather();     // 坐标可能刚改 → 立刻重取，不用等下一个刷新周期
       armAutoHide();
     }, false);
