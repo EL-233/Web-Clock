@@ -1006,10 +1006,15 @@ body.h12 .ampm { display:block; }
   var PLAT = 0.32;                    // 高低平顶各占一秒的比例
   var RAMP = 0.5 - PLAT;              // 过渡段占比（= 0.18）
 
-  /* 相位偏移：未加偏移时"亮"的平顶落在 [PLAT+RAMP, 2·PLAT+RAMP] = [.50, .82]，
-     中心在 .66。要让整秒（相位 0）正好落在平顶中心，就把整体推移 .66：
-       相位 0 → .66（亮平顶正中）    相位 .5 → 1.16 → .16（暗平顶） */
-  var PHASE = PLAT + RAMP + PLAT / 2; // = 0.66
+  /* 相位偏移。未加偏移时各段在 p 坐标里的位置：
+       暗平顶 [0, PLAT]                  中心 PLAT/2      = .16
+       亮平顶 [PLAT+RAMP, 2·PLAT+RAMP]   中心 PLAT+RAMP+PLAT/2 = .66
+     想让【哪个平顶】正对整秒，就取那个中心值当 PHASE：
+       整秒最暗（暗平顶居中） → PHASE = PLAT / 2                = .16   ← 当前
+       整秒最亮（亮平顶居中） → PHASE = PLAT + RAMP + PLAT / 2  = .66
+     两种写法都是从 PLAT/RAMP 推的，不是魔数，调 PLAT 时对齐自动保持。
+     翻来翻去只改这一行。 */
+  var PHASE = PLAT / 2;               // = 0.16 → 整秒最暗、中途最亮
 
   function smoothstep(t) { return t * t * (3 - 2 * t); }
 
