@@ -18,3 +18,10 @@ clock-site-backups/*.zip
 # Windows 杂项
 Thumbs.db
 desktop.ini
+
+# ⚠️ 这个文件是【部署时临时放进去的】，平时不能留在 clock-site/ 里：
+#   Netlify  需要它做天气同源代理
+#   Cloudflare 必须没有它（不允许 200 代理指向外部域名，文件在就部署失败 code 100324）
+# 所以把它彻底排除在版本控制之外，避免哪次 git add -A 手滑把它提交上去、
+# 进而把 Cloudflare 的自动构建搞挂。
+clock-site/_redirects
