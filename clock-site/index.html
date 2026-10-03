@@ -196,7 +196,7 @@ html, body {
       · 宽度：这才是真正卡住 v3 的那一项。收窄它 v3 就能放大更多。
    所以往天气栏加信息时：竖着加（加行）代价小，横着加（加栏）代价大。 */
 .bar--weather {
-  height:1.56rem;      /* = 3 行 × .46 行距 + .18 余量（.wx-next 现在三行） */
+  height:1.92rem;      /* = 3 行 × .58 行距 + .18 余量（.wx-next 三行，行距拉大过） */
   line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
                           它会被没有自己 line-height 的 .wx-main 继承，
                           撑到 1.56 会让那一行占满整栏、失去 flex 余量 */
@@ -238,17 +238,16 @@ body.style-v3.ring-off .ring { display:none; }
    环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
 /* v3 的竖向定位：把时钟推回"比屏幕中心高 .195rem"这个观感。
    竖排自上而下：
-     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.56   合计 7.27rem
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.92   合计 7.63rem
      时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
-     组半高 = 7.27/2 = 3.635rem  →  不补偿的话时钟会比屏幕中心高 .365rem
+     组半高 = 7.63/2 = 3.815rem  →  不补偿的话时钟会比屏幕中心高 .545rem
    偏移公式（padding-top = P，padding-bottom = 0）：
-     偏移 = 3.27 − 竖排/2 + P/2 = −.365 + P/2
-   要回到 −.195：P/2 = .17  →  P = .34rem ✅
+     偏移 = 3.27 − 竖排/2 + P/2 = −.545 + P/2
+   要回到 −.195：P/2 = .35  →  P = .70rem ✅
    （横屏 ≈17px / 竖屏 ≈13px 的"略往上"就是这个数。）
-   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。
-   ⚠️ 为什么不干脆归零让它自然偏高 .365rem：那样能多赚约 0.4% 放大，但时钟会明显上移，
-      破坏已经确认过的观感。收益不值这个代价。 */
-body.style-v3 .stage        { padding-top:.34rem; padding-bottom:0; }
+   速算：P = 竖排 − 6.93（因为 6.93 就是"偏移为 .195"对应的竖排高度）。
+   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。 */
+body.style-v3 .stage        { padding-top:.70rem; padding-bottom:0; }
 body.style-v3 .bar--date    { margin-bottom:1rem; }
 body.style-v3 .bar--weather { margin-top:1rem; }
 
@@ -308,8 +307,8 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.34rem;               /* 二级字号，与 .wx-next 的数据行一致 */
-  line-height:.46rem;             /* 与 .wx-next 一致，两栏行距不同会显得歪 */
+  font-size:.34rem;
+  line-height:.58rem;             /* 与 .wx-next 一致 —— 两栏并排，行距不同会显得歪 */
   letter-spacing:.02em;
 }
 .wx-hi, .wx-lo {
@@ -330,13 +329,13 @@ body.style-v3 .bar--weather { margin-top:1rem; }
         —— 一度想收到 2.7rem（那会到 109%），是算错，别照抄。
      ⚠️ 收窄这一栏能直接抬高 v3 的缩放上限（tp.w 是宽度主导项）：
         fp.w 10.10 → 9.60，竖屏上限 111.7% → 117.5%。横屏此时由【高度】卡住，不变。 */
-  width:3.2rem;
+  width:2.6rem;
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.34rem;     /* 二级字号：两行数据用这个 */
-  line-height:.46rem;   /* 三行要塞进天气栏的高度预算 */
+  font-size:.26rem;     /* 数据行：二级再小一档 */
+  line-height:.58rem;   /* 刻意拉开：三行之间透气。⚠️ 它直接决定天气栏高度（3×行高） */
   letter-spacing:.02em;
 }
 .wx-n1 { text-align:center; white-space:nowrap; }
@@ -349,9 +348,9 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   white-space:nowrap;
 }
 .wx-next .pct { margin-left:.1rem; }   /* 标签和数值之间留缝，否则"降雨概率20%"会黏在一起 */
-/* 表头「未来一小时」是【一级】字号 —— 它和「当前天气」同级，所以要从整栏的 .34 提回 .44。
-   颜色仍压暗：它是标注，不是数据。 */
-.wx-next .tag { font-size:.44rem; color:#555; margin:0 .1rem; }
+/* 表头「未来一小时」比数据行大一档（.34 vs .26）—— 它是标题，不是数据。
+   ⚠️ 它是【唯一】不跟随 `.wx-next` 基础字号的元素，改字号时必须单独想到它。 */
+.wx-next .tag { font-size:.34rem; color:#555; margin:0 .1rem; }
 body.light .wx-next .tag { color:#b0b0b0; }
 /* 第三行的「降雨概率」标签：同样压暗，但【故意不带外边距】——
    .tag 的 margin:0 .1rem 会给最坏行多出 .2rem，而这一栏只有 3.7rem，余量要留给内容 */
@@ -362,23 +361,23 @@ body.light .lbl2 { color:#b0b0b0; }
    ⚠️ 刻意【不用水滴】：水滴会被读成"湿度"，而这里表达的是"降雨概率"。
       斜线是天气图标里表达"下"的通用画法，不会跟湿度混。
    三道线用一个元素 + 两个伪元素凑出来，省得多写 DOM。 */
-/* 尺寸跟着天气右两栏的字号一起缩（.40 → .34 同比例），
-   否则字号小了图标会显得发胖。三道线 .04 宽、左端 0/.11/.22，正好铺满 .26。 */
+/* 尺寸跟着数据行的字号一起缩（.40 → .26 同比例），
+   否则字号小了图标会显得发胖。三道线 .03 宽、左端 0/.085/.17，正好铺满 .20。 */
 .rain {
   position:relative;
   display:inline-block;
-  width:.26rem; height:.17rem;
-  margin-right:.09rem;
+  width:.20rem; height:.13rem;
+  margin-right:.07rem;
 }
 .rain::before, .rain::after, .rain i {
   position:absolute; top:0;
-  width:.04rem; height:.17rem;
+  width:.03rem; height:.13rem;
   background:#4d9fff;                                  /* 与低温箭头同一支蓝，保持配色一致 */
   -webkit-transform:rotate(18deg); transform:rotate(18deg);   /* 斜着才像"下" */
 }
 .rain::before { content:''; left:0; }
-.rain i       { left:.11rem; }
-.rain::after  { content:''; left:.22rem; }
+.rain i       { left:.085rem; }
+.rain::after  { content:''; left:.17rem; }
 body.light .rain::before,
 body.light .rain::after,
 body.light .rain i { background:#2f7fd4; }
@@ -1514,8 +1513,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
      三套样式的占位不同，系数必须分别取：
        v1 平衡  卡组 13.08rem 宽 | 含舞台内边距 9.58rem
-       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.87rem
-       v3 走秒  天气栏 9.60rem 宽 | 含舞台内边距 7.61rem（间距被 CSS 收紧了）
+       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 9.23rem
+       v3 走秒  天气栏 9.00rem 宽 | 含舞台内边距 8.33rem（间距被 CSS 收紧了）
        （这三个数必须与下面的 FOOTPRINT 一致 —— 它们是同一组事实的两种写法。）
      用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
      分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
@@ -1533,9 +1532,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         （v3 的 padding-bottom 是 0，padding-top .24 算在下面 h 里。） */
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
-    v2: { w: 11.18, h: 8.87 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.56 = 7.67，+ .stage 的 1.2
-    v3: { w: 9.60, h: 7.61 }     // 宽度由【天气栏】9.60rem 决定（比环盒 9.42 还宽一点）；
-  };                             //   .83+1+2.88+1+1.56 = 7.27，+ 定位用的 padding-top .34
+    v2: { w: 11.18, h: 9.23 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.92 = 8.03，+ .stage 的 1.2
+    v3: { w: 9.00, h: 8.33 }     // 宽度由【天气栏】9.00rem 决定（比环盒 9.42 还窄一点）；
+  };                             //   .83+1+2.88+1+1.92 = 7.63，+ 定位用的 padding-top .70
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
@@ -1549,8 +1548,10 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     /* 硬上限：用户把倍率调大时，不能让内容顶出屏幕。
        各样式能到的实际倍率【由夹取决定，不是由 SIZE_MAX 决定】——
        把滑杆推到 150% 也不会真的更大，先被这里挡住。
-       当前值（横屏 / 竖屏）：v1 约 128% / 128%，v2 约 122% / 130%，v3 约 114% / 124%。
+       当前值（横屏 / 竖屏）：v1 约 128% / 128%，v2 约 118% / 130%，v3 约 104% / 125%。
        其中 v3 横屏、v2 横屏是【高度】在卡，其余都是宽度。
+       ⚠️ v3 横屏从 114% 掉到 104%，是因为天气栏为了"三行拉开行距"长高了 ——
+          那是刻意的取舍（行距 × 3 = 栏高，栏高直接决定 v3 横屏能放多大）。
        ⚠️ 这是【刻意】的，不是倍率失灵。夹取放在 layout() 而不是放进步进器的
           可选范围里，是因为上限随【横竖屏】变化（竖屏更宽裕），
           而倍率是全局设置 —— 放步进器里一旋转就被绕过去了。 */
