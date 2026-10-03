@@ -309,13 +309,18 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 
 /* 中栏：今日最高 / 最低，上下堆叠。属于【二级】字号，与未来一小时的两行数据同级 */
 .wx-extremes {
-  width:1.15rem;  /* 1.9 → 1.4 → 1.15：盒宽贴着内容走，两侧不留空 —— 留空就会偏心 */
-  margin-left:.5rem;
+  /* 天气栏现在按【两个模块】看：
+       模块一 = 当前温度 + 高低温（高低温紧挨着当前温度，只留一点点缝）
+       模块二 = 未来一小时
+     所以这里 margin-left 很小；真正分隔两个模块的是 .wx-next 的 .5rem。
+     ⚠️ 宽度用 auto（盒子贴内容）—— 定宽会在两侧留下空白，空白就造成偏心。 */
+  width:auto;
+  margin-left:.16rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.34rem;
-  line-height:.42rem;             /* 与 .wx-next 一致 —— 两栏并排，行距不同会显得歪 */
+  font-size:.20rem;               /* 缩两号：.34 -> .20（它是从属信息，不该和当前温度抢） */
+  line-height:.28rem;             /* 跟着字号缩 */
   letter-spacing:.02em;
 }
 .wx-hi, .wx-lo {
@@ -407,8 +412,8 @@ body.light .rain i { background:#2f7fd4; }
    stroke 颜色留给 CSS（下面的 .arw-up / .arw-dn），三个主题各自覆盖。 */
 .arw {
   display:inline-block;
-  width:.14rem; height:.24rem;   /* 14:24 与 viewBox 同比，不会留黑边 */
-  margin-right:.12rem;
+  width:.10rem; height:.17rem;   /* 14:24 与 viewBox 同比（.10 × 24/14 ≈ .17） */
+  margin-right:.08rem;
 }
 .arw path {
   fill:none;
@@ -1606,8 +1611,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
     v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
-    v3: { w: 8.09, h: 6.73 }     // 宽度由【天气栏】决定 = 最坏一行之和：
-  };                             //   左栏最坏文字 3.44 + .5 + 1.15 + .5 + 2.5 = 8.09rem                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
+    v3: { w: 7.30, h: 6.73 }     // 宽度由【天气栏】决定 = 两模块最坏之和：
+  };                             //   模块一 3.44+.16+.70 + 模块间 .5 + 模块二 2.5 = 7.30rem                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
