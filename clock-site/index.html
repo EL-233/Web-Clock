@@ -319,8 +319,8 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.20rem;               /* 缩两号：.34 -> .20（它是从属信息，不该和当前温度抢） */
-  line-height:.28rem;             /* 跟着字号缩 */
+  font-size:.26rem;               /* 比当前温度(.44)小、和未来一小时的数据同号 */
+  line-height:.34rem;             /* 跟着字号走（两行合计 .68rem，天气栏高 1.02rem 装得下） */
   letter-spacing:.02em;
 }
 .wx-hi, .wx-lo {
@@ -344,7 +344,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
         —— 一度想收到 2.7rem（那会到 109%），是算错，别照抄。
      ⚠️ 收窄这一栏能直接抬高 v3 的缩放上限（fp.w 是宽度主导项）。 */
   width:2.5rem;
-  margin-left:.5rem;
+  margin-left:.7rem;   /* 两个大模块之间的间隔（模块一 = 当前温度+高低温） */
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
@@ -1611,8 +1611,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
     v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
-    v3: { w: 7.30, h: 6.73 }     // 宽度由【天气栏】决定 = 两模块最坏之和：
-  };                             //   模块一 3.44+.16+.70 + 模块间 .5 + 模块二 2.5 = 7.30rem                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
+    v3: { w: 7.55, h: 6.73 }     // 宽度由【天气栏】决定 = 两模块最坏之和：
+  };                             //   模块一 3.44+.16+.75 + 模块间 .7 + 模块二 2.5 = 7.55rem                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
