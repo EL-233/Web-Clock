@@ -482,7 +482,7 @@ body.light .rain i { background:#2f7fd4; }
    否则它会被当成"又一张卡片"一起底对齐。
    ============================================================ */
 .colon {
-  display:none;                 /* 默认不显示，下面的 style-v3 才放出来 */
+  display:block;   /* ⚠️ 永远显示 —— 关闭冒号时它停在最暗档，不消失 */                 /* 默认不显示，下面的 style-v3 才放出来 */
   -webkit-align-self:center; align-self:center;
   width:.40rem;
 }
@@ -495,21 +495,22 @@ body.light .rain i { background:#2f7fd4; }
 }
 .colon i + i { margin-top:.36rem; }
 /* ── 冒号开关 ──
-   整套规则都挂在 body.colon-on 上。关闭时这些规则一条都不生效，
+   ⚠️ 冒号【永远占位并可见】。body.colon-on 现在只管"要不要呼吸"：
+      关掉时它停在 COLON_MIN 那一档（保留分隔的暗示），而不是消失。
+      间距规则也都【不再】挂在 colon-on 上 —— 否则关掉后圆点会和数字重叠。
    卡片外边距回到 .card 原本的 .28 —— 于是布局与"加冒号之前"完全一致，
    不会留下一段 0.40rem 的空洞。 */
-body.colon-on .colon             { display:block; }
-body.colon-on .colon--2          { display:none; }        /* 默认只有时分之间那个 */
-body.colon-on.style-v1 .colon--2 { display:block; }       /* 平衡样式才要第二个（分∣秒） */
+.colon--2               { display:none; }   /* 第二个冒号（分∣秒）：只有平衡样式才要 */        /* 默认只有时分之间那个 */
+body.style-v1 .colon--2 { display:block; }       /* 平衡样式才要第二个（分∣秒） */
 
 /* 冒号插进【原有间隙】里：把相邻的两条外边距从 .28 各收到 .08，
    中间刚好放 0.40 宽的冒号，合计仍是 .56rem。
    所以三种样式的卡组宽度都不变 ——
    走带几何、根字号系数、居中 padding-top 全都不用动。 */
-body.colon-on #hh                { margin-right:.08rem; }
-body.colon-on #mm                { margin-left:.08rem; }
-body.colon-on.style-v1 #mm       { margin-right:.08rem; }  /* 平衡样式：分卡右侧也要让位 */
-body.colon-on.style-v1 #ss       { margin-left:.08rem; }
+#hh                { margin-right:.08rem; }
+#mm                { margin-left:.08rem; }
+body.style-v1 #mm       { margin-right:.08rem; }  /* 平衡样式：分卡右侧也要让位 */
+body.style-v1 #ss       { margin-left:.08rem; }
 
 /* 半片：各占 50%，负责裁出字形的上半 / 下半 */
 .half {
@@ -1526,7 +1527,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     setClass(bodyEl, 'style-v2', settings.style === 'v2');
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
     setClass(ssRoot, 'card--sm', settings.style !== 'v1');   // v3 下秒卡已隐藏，加不加都不影响
-    setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：控制显隐 + 外边距
+    setClass(bodyEl, 'colon-on', settings.colon);            // 冒号开关：只管"要不要呼吸"
+    /* 关闭冒号 = 停在最暗那一档（用户要的"非完全关闭"），而不是隐藏。
+       ⚠️ 必须显式写一次 opacity：呼吸是 JS 逐帧写内联 opacity 的，
+          关掉后帧循环不再碰它，不写这一下就会定在上一次的呼吸值上。 */
+    if (!settings.colon) {
+      if (colonEl)  { colonEl.style.opacity  = COLON_MIN; }
+      if (colon2El) { colon2El.style.opacity = COLON_MIN; }
+    }
     // 走带的开关类不在这里设 —— 它在 applyRingState() 里，那个函数滑杆也要用（见下）
     setClass(bodyEl, 'auto-theme', settings.autoTheme);      // 让主题那一行变暗，提示"现由日出日落接管"
 
@@ -1722,7 +1730,11 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
      SVG 元素上的 CSS 动画在 Safari 9 上没把握，而这里本来就有逐帧循环可用。 */
   var FLASH_MS = 650;      // 满圈淡出的时长
 
-  var COLON_MIN = 0.20;    // 冒号呼吸最暗时的透明度
+  var COLON_MIN = 0.20;    // 冒号最暗时的透明度。它身兼两职：
+                         //   · 呼吸时暗相的下限
+                         //   · 【关闭冒号时】的固定显示值 —— 用户要的"非完全关闭"：
+                         //     关掉后不是消失，而是停在最暗那一档，保留分隔的暗示。
+                         //   所以这个值不能设成 0，否则"关闭"和"隐藏"就没区别了。
 
   /* 冒号呼吸的包络：一秒一个周期，返回 0..1。
      刻意【不用正弦】—— 正弦在高低两端一路平滑，人眼分不出"亮"与"灭"是两个状态。
