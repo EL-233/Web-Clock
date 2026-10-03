@@ -340,11 +340,15 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   line-height:.42rem;
   letter-spacing:.02em;
 }
-/* 两行都是「标签 + 数据」内联排列，用 flex 居中对齐，比 inline 基线对齐更好控 */
+/* 两行都是「标签 + 数据」内联排列。
+   ⚠️ 用 space-between + width:100% 做【两端对齐】：标签靠左、数据靠右，
+      两行因此占满整栏、左右边缘对齐（用户要的"两端对齐"）。
+      空隙由 flex 自动分配，不用手工塞空格或间隔号 —— 数据长度变化时也不会走样。 */
 .wx-n2, .wx-n3 {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
-  -webkit-justify-content:center; justify-content:center;
+  -webkit-justify-content:space-between; justify-content:space-between;
+  width:100%;
   white-space:nowrap;
 }
 /* ⚠️ 标签和数据【同字号】，只靠颜色区分 —— 标签压暗、数据用正文色。
@@ -382,52 +386,25 @@ body.light .rain i { background:#2f7fd4; }
 /* 冷热箭头用 border 三角画，不用 ↑ ↓ 字符 ——
    那些字符在 Avenir Next / 苹方上的字重和基线位置不一致，跨设备观感不稳。
    三角的尺寸和颜色完全可控。 */
-/* 高低温箭头：**细线杆 + 尖头**（不是实心三角）。
-   原先用 border 三角，实心块偏重；改成线形后和天气栏其余细线（雨图标）同一套语言。
-   尖头用「小方块只留两条边 + rotate 45°」凑出 V 形 —— 纯 CSS，
-   不用 ↑↓ 字符：那些字形在 Avenir Next / 苹方上的字重和基线不一致，跨设备不稳。
-   ⚠️ 尺寸是推出来的，改杆宽/方块边长时尖头位置要跟着挪：
-      方块 .13 旋转 45° 后对角线 .184，尖端会比原框顶高出约 .027 → 用 margin-top 补回。 */
+/* 高低温箭头 —— 内联 SVG，固定图形（不再用伪元素拼）。
+   「箭头」和「杆」是两条独立路径，中间那道缝由它们 y 坐标的差决定，精确可控；
+   圆角用 stroke-linecap/linejoin，不用手算。
+   stroke 颜色留给 CSS（下面的 .arw-up / .arw-dn），三个主题各自覆盖。 */
 .arw {
-  position:relative;
   display:inline-block;
-  width:.14rem; height:.21rem;
+  width:.12rem; height:.24rem;
   margin-right:.12rem;
 }
-.arw::before {                      /* 杆：圆头细线 */
-  content:'';
-  /* ⚠️ top 和 height 必须一起改：尖头固定在顶部，杆从它下方开始。
-     只改 height 会让杆和尖头之间裂开一道缝。.08 + .13 = .21 = .arw 的高度 */
-  position:absolute; left:50%; top:.08rem;
-  width:.03rem; height:.13rem;
-  margin-left:-.015rem;
-  border-radius:.015rem;
-  background:#ff5c5c;
+.arw path {
+  fill:none;
+  stroke-width:2.5;          /* viewBox 是 12 宽，所以 2.5 ≈ 线宽的 1/5 */
+  stroke-linecap:round;      /* 圆头 */
+  stroke-linejoin:round;
 }
-/* 尖头：小方块只留两条边，旋转 45° 成 V 形。
-   ⚠️ 居中用 translateX(-50%) 而不是算 margin-left ——
-      伪元素默认是 content-box，两条边框会把实际宽度从 .11 撑到 .17rem，
-      按 .11 去算 margin 就会让尖头和杆错开半格（就是之前"歪"的原因）。
-      translateX(-50%) 按渲染宽度算，对边框免疫。 */
-.arw::after {
-  content:'';
-  position:absolute; left:50%; top:.02rem;
-  width:.11rem; height:.11rem;
-  box-sizing:border-box;
-  -webkit-transform:translateX(-50%) rotate(45deg);
-          transform:translateX(-50%) rotate(45deg);
-  border-top:.03rem solid #ff5c5c;
-  border-left:.03rem solid #ff5c5c;
-  border-radius:.02rem;             /* 圆角，与杆同一套语言 */
-}
-/* 低温：杆和尖头都换到下半部分，颜色换蓝 */
-.arw-dn::before { background:#4d9fff; }
-.arw-dn::after {
-  top:auto; bottom:.02rem;
-  border-top:0; border-left:0;
-  border-bottom:.03rem solid #4d9fff;
-  border-right:.03rem solid #4d9fff;
-}
+.arw-up path { stroke:#ff5c5c; }
+/* 低温：整个 SVG 上下翻过来（图形本身对称，翻完就是向下箭头） */
+.arw-dn { -webkit-transform:scaleY(-1); transform:scaleY(-1); }
+.arw-dn path { stroke:#4d9fff; }
 
 /* ============================================================
    卡片
@@ -618,10 +595,8 @@ body.light .half > span { color:#151515; }
 body.light .bar         { color:#6f6f6f; }
 body.light .ampm        { color:#777; }     /* 深色主题那个 #8a8a8a 放在浅色卡面上会太淡 */
 /* 浅色底上要压深一档。箭头现在是「杆 + 尖头」两个伪元素，得分别覆盖 */
-body.light .arw-up::before      { background:#d93a3a; }
-body.light .arw-up::after       { border-top-color:#d93a3a; border-left-color:#d93a3a; }
-body.light .arw-dn::before      { background:#2f7fd4; }
-body.light .arw-dn::after       { border-bottom-color:#2f7fd4; border-right-color:#2f7fd4; }
+body.light .arw-up path { stroke:#d93a3a; }       /* 浅底上要压深一档 */
+body.light .arw-dn path { stroke:#2f7fd4; }
 body.light .gear i      { background:#b4b4b4; }
 body.light .colon i     { background:#5c5c5c; }
 /* 自动主题开着时，把"主题"那一行压暗 —— 它此刻由日出日落接管、不由按钮决定。
@@ -661,10 +636,8 @@ body.amber .bar         { color:#8a7355; }                      /* 日期 / 天�
 body.amber .ampm        { color:#a08a68; }
 body.amber .lbl2        { color:#a08a68; }
 
-body.amber .arw-up::before      { background:#ff7043; }         /* 高温：暖橙红（要和琥珀拉开） */
-body.amber .arw-up::after       { border-top-color:#ff7043; border-left-color:#ff7043; }
-body.amber .arw-dn::before      { background:#6fa8cc; }         /* 低温：降饱和的冷蓝 */
-body.amber .arw-dn::after       { border-bottom-color:#6fa8cc; border-right-color:#6fa8cc; }
+body.amber .arw-up path { stroke:#ff7043; }        /* 高温：暖橙红，要和琥珀拉开 */
+body.amber .arw-dn path { stroke:#6fa8cc; }        /* 低温：降饱和的冷蓝 */
 
 body.amber .rain::before,
 body.amber .rain::after,
@@ -997,9 +970,17 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   <div class="bar bar--weather">
     <div class="wx-v2">
       <div class="wx-main" id="wx-main">-</div>
+      <!-- 箭头改用内联 SVG —— 固定图形，不再用伪元素拼。
+           伪元素那套要靠 margin-left / top 手算位置，而伪元素默认是 content-box，
+           两条边框会把实际宽度撑大，一算就错位（歪过一次）。
+           SVG 里「箭头」和「杆」是两条独立路径，那道空隙就是它们 y 坐标之差，精确可控；
+           圆角交给 stroke-linecap / linejoin，不用自己凑。
+           viewBox 12×24：箭头 M2.5,7.5 → 6,3.5 → 9.5,7.5（^ 形），杆 6,11.5 → 6,20.5 ——
+           两段相差 4 个单位（元素高的 1/6），就是图上那道缝。
+           stroke 颜色交给 CSS（.arw-up path / .arw-dn path），三个主题各自覆盖。 -->
       <div class="wx-extremes">
-        <div class="wx-hi"><i class="arw arw-up"></i><span id="wx-hi">-</span></div>
-        <div class="wx-lo"><i class="arw arw-dn"></i><span id="wx-lo">-</span></div>
+        <div class="wx-hi"><svg class="arw arw-up" viewBox="0 0 12 24" aria-hidden="true"><path d="M2.5 7.5 L6 3.5 L9.5 7.5"/><path d="M6 11.5 L6 20.5"/></svg><span id="wx-hi">-</span></div>
+        <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 12 24" aria-hidden="true"><path d="M2.5 7.5 L6 3.5 L9.5 7.5"/><path d="M6 11.5 L6 20.5"/></svg><span id="wx-lo">-</span></div>
       </div>
       <!-- 最右栏：未来一小时。两行：
              ① 「1小时后」+ 该小时的天气与温度    ② [雨图标]「降雨概率」+ 数值
