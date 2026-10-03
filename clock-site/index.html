@@ -185,14 +185,21 @@ html, body {
   margin-bottom:1.2rem;
 }
 
-/* ⚠️ 这一栏的高度是 v3 走秒样式的【竖向主导量】（见下面 style-v3 那段的推导）。
-   以后要往天气栏【加行】（更多天气信息），高度必须跟着长，
-   而 v3 的 padding-top 和 JS 里的 FOOTPRINT 也要同步重算 —— 三处是一套的。
-   （宽度方向同理但更敏感：v3 的缩放上限由【天气栏 10.3rem】决定，
-     它比环盒 9.42rem 还宽。往横里加栏位会直接压小时钟。） */
+/* ⚠️ 改这一栏的高度/宽度会牵动三处，必须同步：
+      ① 这里的 height  ② 下面 style-v3 那段 padding 推导  ③ JS 里的 FOOTPRINT
+   本文件有过一次实测教训 —— 只改一处会导致时钟位置或缩放上限算错。
+
+   ⚠️ 宽和高对 v3 的影响【不一样】，别看反了：
+      · 高度：v3 的缩放上限【不受它影响】。实测两向都是【宽度】在卡
+        （横屏 min(宽度项 98.3, 高度项 100.5) = 98.3；竖屏同样是宽度项）。
+        加高只影响时钟在屏幕上的位置，不缩小时钟。
+      · 宽度：这才是真正卡住 v3 的那一项。收窄它 v3 就能放大更多。
+   所以往天气栏加信息时：竖着加（加行）代价小，横着加（加栏）代价大。 */
 .bar--weather {
-  height:1.22rem;
-  line-height:1.22rem;
+  height:1.56rem;      /* = 3 行 × .46 行距 + .18 余量（.wx-next 现在三行） */
+  line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
+                          它会被没有自己 line-height 的 .wx-main 继承，
+                          撑到 1.56 会让那一行占满整栏、失去 flex 余量 */
   margin-top:1.2rem;
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
@@ -227,18 +234,21 @@ body.style-v3 .ring { display:block; }
 body.style-v3.ring-off .ring { display:none; }
 
 /* v3 把竖向占位收紧，好让卡组能放大。
-   它是【高度受限】的：宽度方向允许 R≈92，高度方向只到 75。
-   收紧后竖排从 8.1rem 降到 6.93rem，R 就能从 75.3 提到 86，卡组大约大 14%。
+   收紧后竖排是 7.17rem（比别的样式矮），所以卡组能更大。
    环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
-/* v3 的竖向定位 = 【整组居中】，padding-top 归零。
-   不额外下推，时钟就自然落在屏幕中心【上方】—— 因为时钟下方比上方多一栏天气：
-     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.22   合计 6.93rem
+/* v3 的竖向定位：把时钟推回"比屏幕中心高 .195rem"这个观感。
+   竖排自上而下：
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.56   合计 7.27rem
      时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
-     组半高 = 6.93/2 = 3.465rem  →  时钟比组中心高 .195rem
-   即：不写任何 padding，时钟就比屏幕正中高 .195rem（横屏 ≈17px / 竖屏 ≈13px）。
-   这正是要的"时间和日期略往上"。
-   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。 */
-body.style-v3 .stage        { padding-top:0; padding-bottom:0; }
+     组半高 = 7.27/2 = 3.635rem  →  不补偿的话时钟会比屏幕中心高 .365rem
+   偏移公式（padding-top = P，padding-bottom = 0）：
+     偏移 = 3.27 − 竖排/2 + P/2 = −.365 + P/2
+   要回到 −.195：P/2 = .17  →  P = .34rem ✅
+   （横屏 ≈17px / 竖屏 ≈13px 的"略往上"就是这个数。）
+   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。
+   ⚠️ 为什么不干脆归零让它自然偏高 .365rem：那样能多赚约 0.4% 放大，但时钟会明显上移，
+      破坏已经确认过的观感。收益不值这个代价。 */
+body.style-v3 .stage        { padding-top:.34rem; padding-bottom:0; }
 body.style-v3 .bar--date    { margin-bottom:1rem; }
 body.style-v3 .bar--weather { margin-top:1rem; }
 
@@ -297,7 +307,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
   font-size:.40rem;               /* 比当前温度小一档，突出当前值（随天气整栏一起小了一号） */
-  line-height:.52rem;
+  line-height:.46rem;             /* .52 → .46：与 .wx-next 一致，两栏行距不同会显得歪 */
   letter-spacing:.02em;
 }
 .wx-hi, .wx-lo {
@@ -310,26 +320,37 @@ body.style-v3 .bar--weather { margin-top:1rem; }
    同样定宽：天气描述最长 4 个汉字、概率最长 "100%"，
    不定宽的话这些长短变化会把整条底栏推得左右晃。 */
 .wx-next {
-  width:3.9rem;   /* 下行要装「图标 + 天气 + 100%」，最坏(4字描述+概率100%) 3.45rem → 88% */
+  /* 3.9 → 3.7：v3 的缩放上限就是被这一栏的宽度卡住的，收窄它才能放大更多。
+     ⚠️ 不能再窄下去了：最坏一行是「图标 + 降雨概率 + 100%」，
+        本文件实测记录是 3.45rem。3.4rem 会到 101% → 溢出（nowrap + 居中，
+        会往两边对称挤进相邻栏）。3.7rem 下占 93%，留了余量。
+        另外收窄有个【临界点】：fp.w 低于约 9.93rem（≈本栏 3.53rem）之后
+        v3 的上限改由【高度】决定，再窄一点都不会更大 —— 纯亏。 */
+  width:3.7rem;
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
   font-size:.40rem;
-  line-height:.52rem;
+  line-height:.46rem;   /* .52 → .46：三行要塞进天气栏的高度预算 */
   letter-spacing:.02em;
 }
 .wx-n1 { text-align:center; white-space:nowrap; }
-.wx-n2 .pct { margin-left:.1rem; }   /* 天气和概率之间留一点缝，否则"多云52%"会黏在一起 */
-/* 下行是「图标 + 标签 + 数值」，用 flex 居中对齐，比 inline 基线对齐更好控 */
-.wx-n2 {
+.wx-n2 { text-align:center; white-space:nowrap; }      /* 「阴 26°」，纯文字行 */
+/* 第三行是「图标 + 标签 + 数值」，用 flex 居中对齐，比 inline 基线对齐更好控 */
+.wx-n3 {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:center; justify-content:center;
   white-space:nowrap;
 }
-.wx-next .tag { color:#555; margin:0 .1rem; }          /* "1h" 只是标注，压暗 */
+.wx-next .pct { margin-left:.1rem; }   /* 标签和数值之间留缝，否则"降雨概率20%"会黏在一起 */
+.wx-next .tag { color:#555; margin:0 .1rem; }          /* 表头只是标注，压暗 */
 body.light .wx-next .tag { color:#b0b0b0; }
+/* 第三行的「降雨概率」标签：同样压暗，但【故意不带外边距】——
+   .tag 的 margin:0 .1rem 会给最坏行多出 .2rem，而这一栏只有 3.7rem，余量要留给内容 */
+.lbl2 { color:#555; }
+body.light .lbl2 { color:#b0b0b0; }
 
 /* 降雨图标：三道斜线 —— 纯 CSS，不用 emoji 也不用字体字形（跨设备字形不可控）。
    ⚠️ 刻意【不用水滴】：水滴会被读成"湿度"，而这里表达的是"降雨概率"。
@@ -359,15 +380,44 @@ body.light .rain i { background:#2f7fd4; }
 /* 冷热箭头用 border 三角画，不用 ↑ ↓ 字符 ——
    那些字符在 Avenir Next / 苹方上的字重和基线位置不一致，跨设备观感不稳。
    三角的尺寸和颜色完全可控。 */
+/* 高低温箭头：**细线杆 + 尖头**（不是实心三角）。
+   原先用 border 三角，实心块偏重；改成线形后和天气栏其余细线（雨图标）同一套语言。
+   尖头用「小方块只留两条边 + rotate 45°」凑出 V 形 —— 纯 CSS，
+   不用 ↑↓ 字符：那些字形在 Avenir Next / 苹方上的字重和基线不一致，跨设备不稳。
+   ⚠️ 尺寸是推出来的，改杆宽/方块边长时尖头位置要跟着挪：
+      方块 .13 旋转 45° 后对角线 .184，尖端会比原框顶高出约 .027 → 用 margin-top 补回。 */
 .arw {
+  position:relative;
   display:inline-block;
-  width:0; height:0;
+  width:.18rem; height:.32rem;
   margin-right:.13rem;
-  border-left:.08rem solid transparent;
-  border-right:.08rem solid transparent;
 }
-.arw-up { border-bottom:.12rem solid #ff5c5c; }   /* 红 = 高温 */
-.arw-dn { border-top:.12rem solid #4d9fff; }      /* 蓝 = 低温 */
+.arw::before {                      /* 杆 */
+  content:'';
+  position:absolute; left:50%; top:.02rem;
+  width:.04rem; height:.28rem;
+  margin-left:-.02rem;
+  background:#ff5c5c;
+}
+.arw::after {                       /* 尖头（V 形） */
+  content:'';
+  position:absolute; left:50%; top:0;
+  width:.13rem; height:.13rem;
+  margin-left:-.065rem;
+  margin-top:.03rem;
+  border-top:.04rem solid #ff5c5c;
+  border-left:.04rem solid #ff5c5c;
+  -webkit-transform:rotate(45deg); transform:rotate(45deg);
+}
+/* 低温：整支转 180° —— 杆和尖头都换成下半部分，颜色换蓝 */
+.arw-dn::before { background:#4d9fff; }
+.arw-dn::after {
+  top:auto; bottom:0;
+  margin-top:0; margin-bottom:.03rem;
+  border-top:0; border-left:0;
+  border-bottom:.04rem solid #4d9fff;
+  border-right:.04rem solid #4d9fff;
+}
 
 /* ============================================================
    卡片
@@ -557,8 +607,11 @@ body.light .flap-top    { box-shadow:0 1px 0 #d6d6d6; }    /* 折页线 */
 body.light .half > span { color:#151515; }
 body.light .bar         { color:#6f6f6f; }
 body.light .ampm        { color:#777; }     /* 深色主题那个 #8a8a8a 放在浅色卡面上会太淡 */
-body.light .arw-up      { border-bottom-color:#d93a3a; }    /* 浅色底上要压深一档 */
-body.light .arw-dn      { border-top-color:#2f7fd4; }
+/* 浅色底上要压深一档。箭头现在是「杆 + 尖头」两个伪元素，得分别覆盖 */
+body.light .arw-up::before      { background:#d93a3a; }
+body.light .arw-up::after       { border-top-color:#d93a3a; border-left-color:#d93a3a; }
+body.light .arw-dn::before      { background:#2f7fd4; }
+body.light .arw-dn::after       { border-bottom-color:#2f7fd4; border-right-color:#2f7fd4; }
 body.light .gear i      { background:#b4b4b4; }
 body.light .colon i     { background:#5c5c5c; }
 /* 自动主题开着时，把"主题"那一行压暗 —— 它此刻由日出日落接管、不由按钮决定。
@@ -615,7 +668,7 @@ body.h12 .ampm { display:block; }
 .gear {
   position:fixed;
   top:6px; right:6px;
-  width:44px; height:44px;          /* 触摸热区：手指舒适尺寸 */
+  width:48px; height:48px;          /* 触摸热区：手指舒适尺寸 */
   padding:0; border:0;
   background:none;
   z-index:60;
@@ -623,25 +676,25 @@ body.h12 .ampm { display:block; }
   -webkit-tap-highlight-color:transparent;
 }
 /* 图标：三条细横线，做得很小很淡，不抢大钟的视觉。
-   触摸热区仍是 .gear 那 44px（只是看不见），所以线虽细也很好点。
+   触摸热区仍是 .gear 那 48px（只是看不见），所以线虽细也很好点。
    不用 ⚙ 字符 —— 各字体的字形和字重差异太大，跨设备观感不稳。 */
 .gear i {
   position:absolute;
   left:50%;
-  width:20px; height:2px;
-  margin-left:-10px;
+  width:22px; height:2px;
+  margin-left:-11px;
   border-radius:1px;
   background:#3a3a3a;
 }
-.gear i:nth-child(1) { top:14px; }
-.gear i:nth-child(2) { top:21px; }
-.gear i:nth-child(3) { top:28px; }
+.gear i:nth-child(1) { top:15px; }
+.gear i:nth-child(2) { top:23px; }
+.gear i:nth-child(3) { top:31px; }
 
 .panel {
   position:fixed;
-  top:54px; right:6px;              /* 贴在齿轮下方 */
-  width:300px;
-  padding:12px;
+  top:58px; right:6px;              /* 贴在齿轮下方（齿轮 48px + 间距） */
+  width:336px;
+  padding:14px;
   border-radius:6px;
   background:#1b1b1b;
   box-shadow:0 2px 14px rgba(0,0,0,.55);
@@ -657,12 +710,12 @@ body.h12 .ampm { display:block; }
 }
 .panel .tabs button {
   -webkit-flex:1; flex:1;
-  height:30px;
+  height:34px;
   border:0;
   border-radius:4px;
   background:none;
   color:#8a8a8a;
-  font-size:13px;
+  font-size:14px;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
@@ -670,19 +723,20 @@ body.h12 .ampm { display:block; }
 .panel .tabs button.on { background:#2e2e2e; color:#fff; }
 
 /* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
-.panel .page      { display:none; min-height:102px; }   /* = 3 行 × 34
-   ⚠️ 这个 min-height 取【最长那一页】的行数，三页就都等高 —— 切标签页面板不跳高度。
-      往任意一页加行数超过它时，这里要跟着加，否则那页会比别的页高。 */
+.panel .page      { display:none; min-height:152px; }   /* = 4 行 × 38
+   ⚠️ 这个 min-height 必须等于【最长那一页的行数 × .row 的高度】，三页才等高、
+      切标签页时面板不跳高度。当前最长的是「时间」页（4 行：小时制/冒号/走带/农历）。
+      往任意一页加行数超过它时，这里要跟着加。 */
 .panel .page.on   { display:block; }
 
 .panel .row {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:space-between; justify-content:space-between;
-  height:34px;
+  height:38px;
 }
 .panel .lbl {
-  font-size:14px;
+  font-size:16px;
   color:#8a8a8a;
   font-family:"Avenir Next","PingFang SC",sans-serif;
 }
@@ -697,9 +751,9 @@ body.h12 .ampm { display:block; }
   border:0;
   border-radius:0;
   background:none;
-  padding:6px 10px;
+  padding:7px 12px;
   color:#8a8a8a;
-  font-size:13px;
+  font-size:14px;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
@@ -717,12 +771,12 @@ body.h12 .ampm { display:block; }
   background:#101010;
 }
 .panel .step button {
-  width:30px; height:30px;
+  width:34px; height:34px;
   border:0;
   border-radius:0;
   background:none;
   color:#8a8a8a;
-  font-size:16px;
+  font-size:18px;
   line-height:1;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   cursor:pointer;
@@ -741,20 +795,20 @@ body.h12 .ampm { display:block; }
   -webkit-appearance:none; appearance:none;
   -webkit-flex:1; flex:1;
   min-width:0;
-  height:34px;                 /* 热区高度 = 整行高，好按 */
+  height:38px;                 /* 热区高度 = 整行高，好按 */
   margin:0 8px;
   padding:0;
   background:transparent;
   cursor:pointer;
 }
 .panel .rng::-webkit-slider-runnable-track {
-  height:4px; border-radius:2px; background:#101010;
+  height:5px; border-radius:2.5px; background:#101010;
 }
 .panel .rng::-webkit-slider-thumb {
   -webkit-appearance:none; appearance:none;
-  width:18px; height:18px; border-radius:9px;
+  width:20px; height:20px; border-radius:10px;
   background:#8a8a8a;
-  margin-top:-7px;             /* (4-18)/2：把滑块压回轨道中线 */
+  margin-top:-7.5px;           /* (5-20)/2：把滑块压回轨道中线 */
 }
 .panel .rng:active::-webkit-slider-thumb { background:#e0e0e0; }
 /* 文本框（目前只有「位置」用）。面板里的第三种控件，前两种是 .seg 和 .step。
@@ -763,13 +817,13 @@ body.h12 .ampm { display:block; }
   -webkit-appearance:none; appearance:none;
   -webkit-flex:1; flex:1;
   min-width:0;
-  height:26px;
+  height:30px;
   margin-left:8px;
   padding:0 8px;
   border:0; border-radius:4px;
   background:#101010;
   color:#e0e0e0;
-  font-size:13px;
+  font-size:14px;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   text-align:center;
 }
@@ -787,14 +841,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
 /* 滑杆右边的数值读出。定宽居中，拖动时数字变化才不会把滑杆挤得左右晃 */
 .panel .val {
-  width:46px; text-align:center;
-  font-size:12px; color:#e0e0e0;
+  width:52px; text-align:center;
+  font-size:13px; color:#e0e0e0;
   font-family:"Avenir Next","PingFang SC",sans-serif;
 }
 .panel .step span {
-  width:54px;
+  width:60px;
   text-align:center;
-  font-size:13px;
+  font-size:14px;
   color:#e0e0e0;
   font-family:"Avenir Next","PingFang SC",sans-serif;
 }
@@ -890,14 +944,19 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         <div class="wx-hi"><i class="arw arw-up"></i><span id="wx-hi">-</span></div>
         <div class="wx-lo"><i class="arw arw-dn"></i><span id="wx-lo">-</span></div>
       </div>
-      <!-- 最右栏：未来 1 小时。结构与"高低温"那栏同构（上下两行）。
-           "1h" 是标签，压暗处理 —— 它只是说明这两行说的是什么，不是数据。 -->
+      <!-- 最右栏：未来一小时。三行：
+             ① 表头  ② 阴 26°（该小时的天气 + 温度）  ③ [雨图标] 降雨概率 20%
+           ⚠️ 三行的高度预算：3 × .46 行距 = 1.38rem 内容，天气栏给了 1.56rem（+ .18 余量）。
+              改行数或行距必须同步 .bar--weather 的高度、v3 的 padding 推导、FOOTPRINT —— 三处一套。
+
+           ⚠️ 第三行的「降雨概率」刻意【不用 .tag 类】：那个类带 margin:0 .1rem，
+              会给最坏行多出 .2rem（3.45rem 是「图标+4汉字+100%」的实测值，本栏只有 3.7rem）。
+              改用一个只压暗、不带外边距的 .lbl2，把余量留给内容。 -->
       <div class="wx-next">
-        <!-- 标签单独一行，作为整栏的表头 —— 它说的是下面那整行，不只是某一个数。
-             若和概率挤在同一行，最坏情况要 3.81rem，竖屏会被撑到只剩 31px 边距。 -->
-        <div class="wx-n1"><span class="tag">未来1小时</span></div>
-        <div class="wx-n2">
-          <span class="rain"><i></i></span><span id="wx-next-w"></span><span class="pct" id="wx-next-p"></span>
+        <div class="wx-n1"><span class="tag">未来一小时</span></div>
+        <div class="wx-n2"><span id="wx-next-w"></span></div>
+        <div class="wx-n3">
+          <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
         </div>
       </div>
     </div>
@@ -980,6 +1039,16 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
              min="0" max="1000" step="20" value="360">
       <span class="val" id="ring-ms-val">360ms</span>
     </div>
+    <!-- 农历：接在公历后面、同一行，如「10月2日 星期五 · 八月廿二」。
+         默认关。归「时间」页 —— 它和小时制、冒号一样是【时间怎么显示】的问题。
+         ⚠️ 加了这一行，时间页就是 4 行，.panel .page 的 min-height 要跟着是 4×38。 -->
+    <div class="row">
+      <span class="lbl">农历</span>
+      <span class="seg" data-k="lunar">
+        <button type="button" data-v="1">开</button>
+        <button type="button" data-v="0">关</button>
+      </span>
+    </div>
   </div>
 
   <!-- ── 天气 ── -->
@@ -1027,6 +1096,101 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   var WEATHER_MS = 10 * 60 * 1000;
 
   var WEEK = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+
+  /* ============ 农历（可选显示）============
+     纯查表，不联网、不依赖任何库 —— 这台 iPad 只跑 ES5，也没有网络余量去查农历。
+
+     ⚠️ 这张表是农历换算的【标准做法】，但它是数据、不是算法：
+        抄错一位就会在某一年悄悄算错，而且平时看不出来。
+        所以改动它【必须】用已知日期回归验证（见下），不能凭"看着对"。
+        锚点：2024/2025/2026/2027 的正月初一分别是 02-10 / 01-29 / 02-17 / 02-06。
+
+     每年一个数，共 1900–2100：
+       bit 15..4  正月到腊月各月是大月(30天)还是小月(29天)
+       bit 3..0   闰月是几月（0 = 该年无闰月）
+       bit 16     闰月是大月(30)还是小月(29)                                */
+  var LUNAR_INFO = [
+    0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2, // 1900-1909
+    0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977, // 1910-1919
+    0x04970,0x0a4b0,0x0b4b5,0x06a50,0x06d40,0x1ab54,0x02b60,0x09570,0x052f2,0x04970, // 1920-1929
+    0x06566,0x0d4a0,0x0ea50,0x06e95,0x05ad0,0x02b60,0x186e3,0x092e0,0x1c8d7,0x0c950, // 1930-1939
+    0x0d4a0,0x1d8a6,0x0b550,0x056a0,0x1a5b4,0x025d0,0x092d0,0x0d2b2,0x0a950,0x0b557, // 1940-1949
+    0x06ca0,0x0b550,0x15355,0x04da0,0x0a5b0,0x14573,0x052b0,0x0a9a8,0x0e950,0x06aa0, // 1950-1959
+    0x0aea6,0x0ab50,0x04b60,0x0aae4,0x0a570,0x05260,0x0f263,0x0d950,0x05b57,0x056a0, // 1960-1969
+    0x096d0,0x04dd5,0x04ad0,0x0a4d0,0x0d4d4,0x0d250,0x0d558,0x0b540,0x0b6a0,0x195a6, // 1970-1979
+    0x095b0,0x049b0,0x0a974,0x0a4b0,0x0b27a,0x06a50,0x06d40,0x0af46,0x0ab60,0x09570, // 1980-1989
+    0x04af5,0x04970,0x064b0,0x074a3,0x0ea50,0x06b58,0x055c0,0x0ab60,0x096d5,0x092e0, // 1990-1999
+    0x0c960,0x0d954,0x0d4a0,0x0da50,0x07552,0x056a0,0x0abb7,0x025d0,0x092d0,0x0cab5, // 2000-2009
+    0x0a950,0x0b4a0,0x0baa4,0x0ad50,0x055d9,0x04ba0,0x0a5b0,0x15176,0x052b0,0x0a930, // 2010-2019
+    0x07954,0x06aa0,0x0ad50,0x05b52,0x04b60,0x0a6e6,0x0a4e0,0x0d260,0x0ea65,0x0d530, // 2020-2029
+    0x05aa0,0x076a3,0x096d0,0x04afb,0x04ad0,0x0a4d0,0x1d0b6,0x0d250,0x0d520,0x0dd45, // 2030-2039
+    0x0b5a0,0x056d0,0x055b2,0x049b0,0x0a577,0x0a4b0,0x0aa50,0x1b255,0x06d20,0x0ada0, // 2040-2049
+    0x14b63,0x09370,0x049f8,0x04970,0x064b0,0x168a6,0x0ea50,0x06b20,0x1a6c4,0x0aae0, // 2050-2059
+    0x0a2e0,0x0d2e3,0x0c960,0x0d557,0x0d4a0,0x0da50,0x05d55,0x056a0,0x0a6d0,0x055d4, // 2060-2069
+    0x052d0,0x0a9b8,0x0a950,0x0b4a0,0x0b6a6,0x0ad50,0x055a0,0x0aba4,0x0a5b0,0x052b0, // 2070-2079
+    0x0b273,0x06930,0x07337,0x06aa0,0x0ad50,0x14b55,0x04b60,0x0a570,0x054e4,0x0d160, // 2080-2089
+    0x0e968,0x0d520,0x0daa0,0x16aa6,0x056d0,0x04ae0,0x0a9d4,0x0a2d0,0x0d150,0x0f252, // 2090-2099
+    0x0d520                                                                            // 2100
+  ];
+  var LUNAR_M = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+  var LUNAR_D = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十',
+                 '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十',
+                 '廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
+
+  function lunarLeapMonth(y) { return LUNAR_INFO[y - 1900] & 0xf; }
+  function lunarMonthDays(y, m) {
+    return (LUNAR_INFO[y - 1900] & (0x10000 >> m)) ? 30 : 29;
+  }
+  function lunarLeapDays(y) {
+    if (!lunarLeapMonth(y)) { return 0; }
+    return (LUNAR_INFO[y - 1900] & 0x10000) ? 30 : 29;
+  }
+  function lunarYearDays(y) {
+    var i, sum = 348;                       // 12 个月先各按 29 天算
+    for (i = 0x8000; i > 0x8; i >>= 1) { sum += (LUNAR_INFO[y - 1900] & i) ? 1 : 0; }
+    return sum + lunarLeapDays(y);
+  }
+
+  /* 公历 Date → 农历。返回 { m, d, leap }，算不出（超出 1900–2100）返回 null。
+     基准：1900-01-31 是农历 1900 年正月初一（这张表的公认起点）。 */
+  function solarToLunar(date) {
+    var base = Date.UTC(1900, 0, 31);
+    var cur  = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    var off  = Math.floor((cur - base) / 86400000);
+    if (off < 0) { return null; }
+
+    var y = 1900, days = 0;
+    while (y <= 2100) {
+      days = lunarYearDays(y);
+      if (off < days) { break; }
+      off -= days;
+      y++;
+    }
+    if (y > 2100) { return null; }
+
+    var leap = lunarLeapMonth(y), isLeap = false, m = 1;
+    for (m = 1; m <= 12; m++) {
+      var dm;
+      if (leap > 0 && m === leap + 1 && !isLeap) {   // 闰月插在 leap 月之后
+        m--;
+        isLeap = true;
+        dm = lunarLeapDays(y);
+      } else {
+        dm = lunarMonthDays(y, m);
+      }
+      if (isLeap && m === leap + 1) { isLeap = false; }
+      if (off < dm) { break; }
+      off -= dm;
+    }
+    return { m: m, d: off + 1, leap: isLeap };
+  }
+
+  /* 显示用文本，如「八月廿二」「闰四月十五」。范围外返回空串（不显示，不报错）。 */
+  function lunarText(date) {
+    var l = solarToLunar(date);
+    if (!l) { return ''; }
+    return (l.leap ? '闰' : '') + LUNAR_M[l.m - 1] + '月' + LUNAR_D[l.d - 1];
+  }
 
   /* WMO 天气码 → 中文（Open-Meteo 只返回数字码） */
   var WMO = {
@@ -1078,10 +1242,11 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
                     // 位置：经纬度，填成 "纬度, 经度"。**默认空** ——
                     // 仓库是公开的，这里不带任何真实坐标（见文件顶部「配置」那段）。
                     geo:'',
+                    lunar:false,                                      // 日期后面附农历（默认关）
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
-  var SIZE_MIN = 0.70, SIZE_MAX = 1.20, SIZE_STEP = 0.05;
+  var SIZE_MIN = 0.70, SIZE_MAX = 1.50, SIZE_STEP = 0.05;
 
   function clampMul(v) {
     if (typeof v !== 'number' || isNaN(v)) { return 1; }
@@ -1161,6 +1326,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       if (o.dataSrc === 'live' || o.dataSrc === 'demo' || o.dataSrc === 'offline') {
         settings.dataSrc = o.dataSrc;
       }
+      if (o.lunar === true || o.lunar === false)     { settings.lunar = o.lunar; }
       // 经纬度：只收字符串，格式合法性交给 parseGeo() 判（它拿不准就当没填）
       if (typeof o.geo === 'string') { settings.geo = o.geo; }
       settings.ringMs = clampRingMs(o.ringMs);   // clamp 自己会把脏值/缺失退回默认
@@ -1195,6 +1361,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       var k    = seg.getAttribute('data-k');
       var cur  = (k === 'h12')      ? (settings.h12 ? '1' : '0')
                : (k === 'colon')    ? (settings.colon ? '1' : '0')
+               : (k === 'lunar')    ? (settings.lunar ? '1' : '0')
                : (k === 'autoTheme')? (settings.autoTheme ? '1' : '0')
                : (k === 'dataSrc')  ? settings.dataSrc
                : (k === 'theme')    ? settings.theme
@@ -1315,6 +1482,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
     if (k === 'colon') { settings.colon = (v === '1'); }
+    if (k === 'lunar') { settings.lunar = (v === '1'); }
     if (k === 'autoTheme') {
       settings.autoTheme = (v === '1');
       lastDayState = null;      // 重新打开时立刻按当前昼夜状态套用一次
@@ -1333,25 +1501,30 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
      全站尺寸用 rem，根字号按屏幕算，横竖屏自动适配。
 
      三套样式的占位不同，系数必须分别取：
-       v1 平衡  卡组 13.08rem 宽 | 竖排 8.38rem
-       v2 层次  卡组 11.18rem 宽 | 竖排 7.33rem
-       v3 走秒  环盒  9.42rem 宽 | 竖排 6.93rem（间距被 CSS 收紧了）
+       v1 平衡  卡组 13.08rem 宽 | 含舞台内边距 9.58rem
+       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.87rem
+       v3 走秒  天气栏 10.10rem 宽 | 含舞台内边距 7.61rem（间距被 CSS 收紧了）
        （这三个数必须与下面的 FOOTPRINT 一致 —— 它们是同一组事实的两种写法。）
      用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
      分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
      而且这样每套都能撑满屏幕。反过来若统一按最宽的 v1 取值，v2 会被迫缩小 12%。
 
-     v3 的高度系数比别的样式大：它就是靠 CSS 里收窄竖向间距腾出的空间，
-     才把 R 从 75.3 提到 86（卡组大 14%）。横屏下宽向允许到 92、高向到 86，
-     所以最终是高度在约束 —— 想让 v3 再大就得继续压竖向。 */
+     v3 的高度系数比别的样式大：它就是靠 CSS 里收窄竖向间距腾出的空间。 */
   /* 各样式【内容的实际占位】（rem）。用来反算"字号最多能多大而不溢出屏幕"。
-     卡组/环盒宽、竖排总高 —— 都是已知常量，见各自的 CSS 注释。 */
+
+     ⚠️ 这里算的是【连舞台内边距一起的整条带】，不是光内容 —— 见 .stage 那几条规则：
+        `.stage` 基础有 `padding-bottom:1.2rem`，v1/v2 都吃这个值，v3 把它归零。
+        内容用 justify-content:center 居中的，顶边留白 = (屏高 − 带高)/2，
+        所以【带高 = 竖排内容 + 上下内边距】才是"不裁到顶"的正确判据。
+        早先的版本漏算了这 1.2rem —— 在 SIZE_MAX=1.20 时侥幸没露馅，
+        一旦把倍率上限提高，v2 就会顶出屏幕约 6px。这次一并修正。
+        （v3 的 padding-bottom 是 0，padding-top .24 算在下面 h 里。） */
   var FOOTPRINT = {
-    v1: { w: 13.08, h: 8.38 },   // 卡组 13.08rem 宽；竖排 1.4+1.35+2.88+1.35+1.4
-    v2: { w: 11.18, h: 7.33 },   // 卡组 11.18rem 宽；竖排 .83+1.2+2.88+1.2+1.22
-    v3: { w: 10.30, h: 6.93 }    // 宽度由【天气栏】10.3rem 决定（比环盒 9.42 还宽）；
-  };                             //   竖排 .83+1+2.88+1+1.22（padding-top 已归零）
-  var FIT = 0.94;                // 内容最多占屏幕的 94%，四周留边距
+    v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
+    v2: { w: 11.18, h: 8.87 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.56 = 7.67，+ .stage 的 1.2
+    v3: { w: 10.10, h: 7.61 }    // 宽度由【天气栏】10.10rem 决定（比环盒 9.42 还宽）；
+  };                             //   .83+1+2.88+1+1.56 = 7.27，+ 定位用的 padding-top .34
+  var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
     var w = window.innerWidth, h = window.innerHeight;
@@ -1362,10 +1535,10 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     var size = Math.min(w * k, h * kh) * (settings.sizeMul[st] || 1);
 
     /* 硬上限：用户把倍率调大时，不能让内容顶出屏幕。
-       三套样式的余量差别很大 —— 现有观感下 v1/v2 只占上限的约 80%，
-       而 v3 已经吃到 92%。所以：
-         v1 / v2 能一路调到 120%
-         v3 大约到 108% 就被夹住
+       各样式能到的实际倍率【由夹取决定，不是由 SIZE_MAX 决定】——
+       把滑杆推到 150% 也不会真的更大，先被这里挡住。
+       当前值（横屏 / 竖屏）：v1 约 128% / 128%，v2 约 122% / 129%，v3 约 114% / 112%。
+       其中 v3 是【宽度】在卡（天气栏），v2 横屏是【高度】在卡，其余是宽度。
        ⚠️ 这是【刻意】的，不是倍率失灵。夹取放在 layout() 而不是放进步进器的
           可选范围里，是因为上限随【横竖屏】变化（竖屏更宽裕），
           而倍率是全局设置 —— 放步进器里一旋转就被绕过去了。 */
@@ -1754,11 +1927,18 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     mmCard.set(pad(d.getMinutes()));
     ssCard.set(pad(d.getSeconds()));   // 走秒带由自己的 20fps 循环驱动，不在这里
 
-    var stamp = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    // ⚠️ 农历开关的状态要【并进这道门】—— 这道门只在那一天变化时才重画 DOM，
+    //    不带上开关的话，切换农历设置不会刷新（要等到第二天），看起来像坏了。
+    var stamp = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate()
+              + (settings.lunar ? '·lunar' : '');
     if (stamp !== lastDate) {
       lastDate = stamp;
-      dateEl.firstChild.nodeValue =
-        (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
+      var ds = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
+      if (settings.lunar) {
+        var lt = lunarText(d);
+        if (lt) { ds += ' · ' + lt; }    // 超出农历表范围时 lunarText 返回空串，就只显示公历
+      }
+      dateEl.firstChild.nodeValue = ds;
     }
 
     autoThemeTick();   // 1Hz 检查昼夜切换（只在真正跨越日出/日落时才动作）
@@ -1846,7 +2026,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
      接口返回的 time 就是 "2026-10-02T19:00" 这种本地时间串（timezone 已生效），
      所以直接和目标串比较即可，不用自己解析成 Date 再比。 */
   function nextHour(hourly) {
-    if (!hourly || !hourly.time || !hourly.weather_code) { return null; }
+    if (!hourly || !hourly.time || !hourly.weather_code || !hourly.temperature_2m) { return null; }
     var t = new Date();
     t.setHours(t.getHours() + 1, 0, 0, 0);
     var key = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate())
@@ -1854,7 +2034,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     for (var i = 0; i < hourly.time.length; i++) {
       if (hourly.time[i] === key) {
         return { code: hourly.weather_code[i],
-                 prob: hourly.precipitation_probability[i] };
+                 prob: hourly.precipitation_probability[i],
+                 temp: hourly.temperature_2m[i] };
       }
     }
     return null;   // 找不到就留空，绝不猜
@@ -1875,8 +2056,12 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     setText(wxHi,   hi + '°');                 // 中栏上行，前面的红↑写在 HTML 里
     setText(wxLo,   lo + '°');                 // 中栏下行，前面的蓝↓写在 HTML 里
     if (nx) {
-      setText(wxNextW, WMO[nx.code] || '');    // 右栏上行：未来 1 小时的天气（"1h" 标签写在 HTML 里）
-      setText(wxNextP, nx.prob + '%');         // 右栏下行：那一小时的降雨概率
+      // 第二行「阴 26°」：该小时的天气 + 温度。
+      // ⚠️ 温度可能缺（接口异常 / 老数据），缺了就只显示天气描述，不要冒出「NaN°」
+      var nxT = (typeof nx.temp === 'number' && !isNaN(nx.temp))
+              ? ' ' + Math.round(nx.temp) + '°' : '';
+      setText(wxNextW, (WMO[nx.code] || '') + nxT);   // 第二行：未来一小时的天气 + 温度
+      setText(wxNextP, nx.prob + '%');                // 第三行：「降雨概率」四个字写在 HTML 里
     }
 
     // v1 单行版。两份都填 —— 切样式时不用重新请求天气，直接切显示即可。
@@ -1900,7 +2085,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     };
     var n0   = new Date();
     var base = new Date(n0.getFullYear(), n0.getMonth(), n0.getDate(), 0, 0, 0, 0);
-    var time = [], prob = [], code = [];
+    var time = [], prob = [], code = [], temp = [];
     for (var i = 0; i < 48; i++) {                  // 两天，覆盖跨午夜
       var d  = new Date(base.getTime() + i * 3600000);
       var hh = d.getHours();
@@ -1908,6 +2093,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       // 一条确定性的、看着合理的起伏：清晨概率高、午后低
       prob.push(Math.round(32 - 28 * Math.cos((hh - 4) / 24 * 2 * Math.PI)));
       code.push(hh < 7 ? 45 : hh < 11 ? 3 : hh < 17 ? 1 : 2);
+      // 气温日变化：下午最热、凌晨最冷。⚠️ 必须和真实接口一样给出这个数组，
+      // 否则「未来一小时」那栏的温度在示例模式下是空的 —— 而示例模式正是用来看版面的
+      temp.push(Math.round((26 + 5 * Math.sin((hh - 9) / 24 * 2 * Math.PI)) * 10) / 10);
     }
     var today = stamp(base).slice(0, 10);
     return {
@@ -1916,7 +2104,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
                  sunrise: [today + 'T06:14'], sunset: [today + 'T18:09'] },
       hourly:  { time: time,
                  precipitation_probability: prob,
-                 weather_code: code }
+                 weather_code: code,
+                 temperature_2m: temp }
     };
   }
 
@@ -1971,7 +2160,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
             + '&longitude=' + geo.lon
             + '&current=temperature_2m,weather_code'
             + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset'
-            + '&hourly=precipitation_probability,weather_code'
+            + '&hourly=precipitation_probability,weather_code,temperature_2m'
             // timezone=auto：由坐标自己定。写死时区等于又泄露一次位置
             + '&timezone=auto&forecast_days=2'   // 2 天：保证临近午夜时"下一个整点"也在数组里
             + '&_=' + Date.now();   // 破缓存参数。
