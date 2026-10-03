@@ -863,6 +863,10 @@ body.h12 .ampm { display:block; }
   font-size:14px;
   font-family:"Avenir Next","PingFang SC",sans-serif;
   text-align:center;
+  /* ⚠️ 必须显式恢复 —— 全局在 html,body 上设了 -webkit-user-select:none，
+     那条在 iOS 上同样会挡住输入框的键盘（和 touchstart 的 preventDefault 一起，
+     是两个独立的拦路虎）。少了这一句，这个框在 iPad / iPhone 上打不了字。 */
+  -webkit-user-select:text; user-select:text;
 }
 /* 占位符压暗 —— 提示的是格式，不是值，不该和真值一样抢眼 */
 .panel .txt::-webkit-input-placeholder { color:#555; }
@@ -2299,7 +2303,17 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   /* 统一的「点击」绑定：触摸优先，鼠标兜底 */
   function bindTap(el, handler) {
     el.addEventListener('touchstart', function (e) {
-      e.preventDefault();
+      /* ⚠️ 文本框/滑块上【绝不能】preventDefault。
+         iOS 上对 touchstart 调 preventDefault 会阻止输入框获得焦点 ——
+         键盘永远弹不出来，iPad / iPhone 都中招（实测过：能点、能拖滑杆，
+         唯独经纬度那个框怎么点都不出键盘，就是因为它在面板里、
+         被这一句一起拦了）。
+         这些控件要走原生行为；滑杆本来就不需要焦点所以以前没暴露这个问题。 */
+      var t = e.target;
+      var tag = (t && t.tagName) ? t.tagName.toUpperCase() : '';
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        e.preventDefault();
+      }
       lastTouchTs = Date.now();
       handler(e);
     }, false);
