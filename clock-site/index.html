@@ -353,7 +353,7 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 }
 /* 第一行那个「·」——它唯一的作用就是把第一行撑宽到和第二行相当。
    要调两行的对齐就动这里的 margin（调大 = 第一行更宽）。 */
-.wx-n2 .sep { color:#555; margin:0 .14rem; }
+.wx-n2 .sep { color:#555; margin:0 .08rem; }
 body.light .wx-n2 .sep { color:#b0b0b0; }
 body.amber .wx-n2 .sep { color:#a08a68; }
 /* ⚠️ 标签和数据【同字号】，只靠颜色区分 —— 标签压暗、数据用正文色。
@@ -407,8 +407,10 @@ body.light .rain i { background:#2f7fd4; }
   stroke-linejoin:round;
 }
 .arw-up path { stroke:#ff5c5c; }
-/* 低温：整个 SVG 上下翻过来（图形本身对称，翻完就是向下箭头） */
-.arw-dn { -webkit-transform:scaleY(-1); transform:scaleY(-1); }
+/* ⚠️ 低温箭头【不用 scaleY(-1) 翻转】—— 曾经那么做，用户反馈"上下箭头看着不一致"。
+   翻转版依赖引擎怎么光栅化"被变换过的描边"，老引擎（这台是 iOS 9）未必和正向一致。
+   现在两条 path 各自显式写出来，几何是纯镜像（以 y=12 对称），不经过任何变换。
+   上下两个箭头因此只有坐标不同，渲染路径完全相同。 */
 .arw-dn path { stroke:#4d9fff; }
 
 /* ============================================================
@@ -985,7 +987,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
            stroke 颜色交给 CSS（.arw-up path / .arw-dn path），三个主题各自覆盖。 -->
       <div class="wx-extremes">
         <div class="wx-hi"><svg class="arw arw-up" viewBox="0 0 12 24" aria-hidden="true"><path d="M1.5 8.5 L6 3 L10.5 8.5"/><path d="M6 11.5 L6 20.5"/></svg><span id="wx-hi">-</span></div>
-        <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 12 24" aria-hidden="true"><path d="M1.5 8.5 L6 3 L10.5 8.5"/><path d="M6 11.5 L6 20.5"/></svg><span id="wx-lo">-</span></div>
+        <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 12 24" aria-hidden="true"><path d="M1.5 15.5 L6 21 L10.5 15.5"/><path d="M6 12.5 L6 3.5"/></svg><span id="wx-lo">-</span></div>
       </div>
       <!-- 最右栏：未来一小时。两行：
              ① 「1小时后」+ 该小时的天气与温度    ② [雨图标]「降雨概率」+ 数值
