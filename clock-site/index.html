@@ -196,7 +196,7 @@ html, body {
       · 宽度：这才是真正卡住 v3 的那一项。收窄它 v3 就能放大更多。
    所以往天气栏加信息时：竖着加（加行）代价小，横着加（加栏）代价大。 */
 .bar--weather {
-  height:1.56rem;      /* = 3 行 × .42 行距 + 标题下的 .12 + .18 余量 = 1.38 + .18 */
+  height:1.02rem;      /* = 2 行 × .42 行距 + .18 余量 */
   line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
                           它会被没有自己 line-height 的 .wx-main 继承，
                           撑到 1.56 会让那一行占满整栏、失去 flex 余量 */
@@ -238,16 +238,16 @@ body.style-v3.ring-off .ring { display:none; }
    环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
 /* v3 的竖向定位：把时钟推回"比屏幕中心高 .195rem"这个观感。
    竖排自上而下：
-     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.56   合计 7.27rem
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.02   合计 6.73rem
      时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
-     组半高 = 7.27/2 = 3.635rem  →  不补偿的话时钟会比屏幕中心高 .365rem
-   偏移公式（padding-top = P，padding-bottom = 0）：
-     偏移 = 3.27 − 竖排/2 + P/2 = −.365 + P/2
-   要回到 −.195：P/2 = .17  →  P = .34rem ✅
-   （横屏 ≈17px / 竖屏 ≈13px 的"略往上"就是这个数。）
-   速算：P = 竖排 − 6.93（因为 6.93 就是"偏移为 .195"对应的竖排高度）。
-   ⚠️ 这是推导值 —— 竖向任何一栏的高度变了都要重算（天气栏高度就在上面 .bar--weather）。 */
-body.style-v3 .stage        { padding-top:.34rem; padding-bottom:0; }
+     组半高 = 6.73/2 = 3.365rem  →  时钟自然比屏幕中心高 .095rem
+   ⚠️ 这里【给不出 padding-top】。要让时钟回到"高 .195rem"需要
+        P = 竖排 − 6.93 = −0.20rem，是负数，做不到。
+        天气栏从三行减到两行后竖排变矮，时钟的自然位置本来就低了，
+        .095rem 是能给到的最接近值。
+        ⚠️ 这不是 bug，是"信息变少了"的必然结果 —— 别看到 .095 就以为算错了。
+   速算：偏移 = 3.27 − 竖排/2 + padding-top/2 */
+body.style-v3 .stage        { padding-top:0; padding-bottom:0; }
 body.style-v3 .bar--date    { margin-bottom:1rem; }
 body.style-v3 .bar--weather { margin-top:1rem; }
 
@@ -327,42 +327,31 @@ body.style-v3 .bar--weather { margin-top:1rem; }
      ⚠️ 所以 3.2rem 是这条的下限附近（填充 92%，与改版前的 88% 同档），
         再窄就会溢出（nowrap + 居中，会对称挤进相邻栏）。
         —— 一度想收到 2.7rem（那会到 109%），是算错，别照抄。
-     ⚠️ 收窄这一栏能直接抬高 v3 的缩放上限（tp.w 是宽度主导项）：
-        fp.w 10.10 → 9.60，竖屏上限 111.7% → 117.5%。横屏此时由【高度】卡住，不变。 */
-  width:2.6rem;
+     ⚠️ 收窄这一栏能直接抬高 v3 的缩放上限（fp.w 是宽度主导项）。 */
+  width:2.5rem;
   margin-left:.5rem;
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.26rem;     /* 数据行：二级再小一档 */
-  /* 行框用【数据行之间】的间距（.42）。标题到数据那一段更大（.54）——
-     不是靠改行高，而是给 .wx-n1 加 margin-bottom（见下），
-     这样"行框"和"间距"两件事解耦，改一个不会连带另一个。
-     ⚠️ 三行的总高 = 3×行高 + 标题那个 margin，它直接决定天气栏高度、进而决定 v3 横屏能放多大。
-        改这里务必同时改 .bar--weather 高度、v3 的 padding 推导、FOOTPRINT。 */
+  font-size:.26rem;
+  /* ⚠️ 两行的总高 = 2×行高 = .84rem，它直接决定天气栏高度、
+     进而决定 v3 横屏能放多大（横屏是高度主导）。改这里务必同时改
+     .bar--weather 高度、v3 的 padding 推导、FOOTPRINT —— 三处是一套。 */
   line-height:.42rem;
   letter-spacing:.02em;
 }
-/* 标题行：额外给一段下方外边距，让"标题 → 数据"的间距大于"数据 → 数据"。
-   层次上这是对的 —— 标题是标签，要和它统领的数据块分开；
-   两行数据是一组，彼此靠拢。.42 + .12 = .54 对 .42。 */
-.wx-n1 { text-align:center; white-space:nowrap; margin-bottom:.12rem; }
-.wx-n2 { text-align:center; white-space:nowrap; }      /* 「阴 26°」，纯文字行 */
-/* 第三行是「图标 + 标签 + 数值」，用 flex 居中对齐，比 inline 基线对齐更好控 */
-.wx-n3 {
+/* 两行都是「标签 + 数据」内联排列，用 flex 居中对齐，比 inline 基线对齐更好控 */
+.wx-n2, .wx-n3 {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:center; justify-content:center;
   white-space:nowrap;
 }
-.wx-next .pct { margin-left:.1rem; }   /* 标签和数值之间留缝，否则"降雨概率20%"会黏在一起 */
-/* 表头「未来一小时」比数据行大一档（.34 vs .26）—— 它是标题，不是数据。
-   ⚠️ 它是【唯一】不跟随 `.wx-next` 基础字号的元素，改字号时必须单独想到它。 */
-.wx-next .tag { font-size:.34rem; color:#555; margin:0 .1rem; }
-body.light .wx-next .tag { color:#b0b0b0; }
-/* 第三行的「降雨概率」标签：同样压暗，但【故意不带外边距】——
-   .tag 的 margin:0 .1rem 会给最坏行多出 .2rem，而这一栏只有 3.7rem，余量要留给内容 */
-.lbl2 { color:#555; }
+/* ⚠️ 标签和数据【同字号】，只靠颜色区分 —— 标签压暗、数据用正文色。
+   所以这里【没有】字号覆盖：.lbl2 完全跟随 .wx-next 的 .26rem。
+   margin-right 是标签和数据之间的那道缝（两行都用它，所以只有这一处间距来源；
+   .pct 那边不要再加 margin，否则会双份）。 */
+.lbl2 { color:#555; margin-right:.08rem; }
 body.light .lbl2 { color:#b0b0b0; }
 
 /* 降雨图标：三道斜线 —— 纯 CSS，不用 emoji 也不用字体字形（跨设备字形不可控）。
@@ -402,13 +391,15 @@ body.light .rain i { background:#2f7fd4; }
 .arw {
   position:relative;
   display:inline-block;
-  width:.14rem; height:.26rem;
+  width:.14rem; height:.21rem;
   margin-right:.12rem;
 }
 .arw::before {                      /* 杆：圆头细线 */
   content:'';
-  position:absolute; left:50%; top:.03rem;
-  width:.03rem; height:.20rem;
+  /* ⚠️ top 和 height 必须一起改：尖头固定在顶部，杆从它下方开始。
+     只改 height 会让杆和尖头之间裂开一道缝。.08 + .13 = .21 = .arw 的高度 */
+  position:absolute; left:50%; top:.08rem;
+  width:.03rem; height:.13rem;
   margin-left:-.015rem;
   border-radius:.015rem;
   background:#ff5c5c;
@@ -652,6 +643,53 @@ body.light .panel .step              { background:#ededed; }
 body.light .panel .step button       { color:#6f6f6f; }
 body.light .panel .step button:active { background:#dedede; }
 body.light .panel .step span         { color:#222; }
+
+/* ============================================================
+   琥珀主题（第三个主题）
+   ⚠️ 琥珀是【深色系】—— 所以它不需要像 body.light 那样把每条都反过来，
+      但【选择器必须与 body.light 一一对应】。这里把它们集中写成一块，
+      而不是像浅色那样散在三处，就是为了好核对"有没有漏"。
+      漏一条的后果：琥珀主题下那一处在深色底上露出冷黑，一眼就看出没做完。
+   配色取向：黑棕底 + 琥珀字。夜间发光柔和，不像纯白那么刺眼。
+   ============================================================ */
+body.amber              { background:#0a0704; color:#ffb347; }
+body.amber .half        { background:#1a1510; }
+body.amber .static-top,
+body.amber .flap-top    { box-shadow:0 1px 0 #0a0704; }        /* 折页线 */
+body.amber .half > span { color:#ffb347; }                      /* 数字：琥珀 */
+body.amber .bar         { color:#8a7355; }                      /* 日期 / 天气：暖灰 */
+body.amber .ampm        { color:#a08a68; }
+body.amber .lbl2        { color:#a08a68; }
+
+body.amber .arw-up::before      { background:#ff7043; }         /* 高温：暖橙红（要和琥珀拉开） */
+body.amber .arw-up::after       { border-top-color:#ff7043; border-left-color:#ff7043; }
+body.amber .arw-dn::before      { background:#6fa8cc; }         /* 低温：降饱和的冷蓝 */
+body.amber .arw-dn::after       { border-bottom-color:#6fa8cc; border-right-color:#6fa8cc; }
+
+body.amber .rain::before,
+body.amber .rain::after,
+body.amber .rain i              { background:#6fa8cc; }         /* 与低温箭头同一支，保持配色一致 */
+
+body.amber .gear i      { background:#5a4a35; }
+body.amber .colon i     { background:#c99a55; }
+body.amber .ring-fill   { stroke:#4a3c28; }                     /* 暖暗，仍只是暗示 */
+body.amber .ring-flash  { stroke:#4a3c28; }
+
+body.amber .panel       { background:#201a12; box-shadow:0 2px 14px rgba(0,0,0,.55); }
+body.amber .panel .lbl  { color:#97846a; }
+body.amber .panel .seg  { background:#140f0a; }
+body.amber .panel .seg button    { color:#97846a; }
+body.amber .panel .seg button.on { background:#4a3a26; color:#ffe4b8; }
+body.amber .panel .tabs button       { color:#97846a; }
+body.amber .panel .tabs button.on    { background:#3a2d1c; color:#ffe4b8; }
+body.amber .panel .step              { background:#140f0a; }
+body.amber .panel .step button       { color:#97846a; }
+body.amber .panel .step button:active { background:#2a2015; }
+body.amber .panel .step span         { color:#ffd9a0; }
+body.amber .panel .txt.bad { color:#ff9a7a; }
+body.amber .panel .txt        { background:#140f0a; color:#ffd9a0; }
+body.amber .panel .txt:focus  { background:#0f0b07; }
+body.amber .panel .txt::-webkit-input-placeholder { color:#6b5a44; }
 
 /* ============================================================
    AM/PM —— 只挂在时卡上，12 小时制才显示
@@ -963,17 +1001,20 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         <div class="wx-hi"><i class="arw arw-up"></i><span id="wx-hi">-</span></div>
         <div class="wx-lo"><i class="arw arw-dn"></i><span id="wx-lo">-</span></div>
       </div>
-      <!-- 最右栏：未来一小时。三行：
-             ① 表头  ② 阴 26°（该小时的天气 + 温度）  ③ [雨图标] 降雨概率 20%
-           ⚠️ 三行的高度预算：3 × .46 行距 = 1.38rem 内容，天气栏给了 1.56rem（+ .18 余量）。
+      <!-- 最右栏：未来一小时。两行：
+             ① 「1小时后」+ 该小时的天气与温度    ② [雨图标]「降雨概率」+ 数值
+           ⚠️ 两行的高度预算：2 × .42 行距 = .84rem 内容，天气栏给了 1.02rem（+ .18 余量）。
               改行数或行距必须同步 .bar--weather 的高度、v3 的 padding 推导、FOOTPRINT —— 三处一套。
+              （这一栏的高度【直接决定 v3 横屏能放大多少】：
+                从三行减到两行后，天气栏变矮，v3 上限跟着涨了一档。）
 
-           ⚠️ 第三行的「降雨概率」刻意【不用 .tag 类】：那个类带 margin:0 .1rem，
-              会给最坏行多出 .2rem（3.45rem 是「图标+4汉字+100%」的实测值，本栏只有 3.7rem）。
-              改用一个只压暗、不带外边距的 .lbl2，把余量留给内容。 -->
+           两行【字号一致】（都跟随 .wx-next 的 .26rem），靠【颜色】区分标签与数据：
+           标签用压暗的 .lbl2，数据用正文色。
+           ⚠️ 标签写死在 HTML 里。showWeatherPlaceholder() 只清数据不清标签 ——
+              所以"没拉到天气"时看到的是「1小时后」「降雨概率」后面空着。
+              这是【有意】的（比整行消失更容易认出是天气没数据），别当成 bug 改掉。 -->
       <div class="wx-next">
-        <div class="wx-n1"><span class="tag">未来一小时</span></div>
-        <div class="wx-n2"><span id="wx-next-w"></span></div>
+        <div class="wx-n2"><span class="lbl2">1小时后</span><span id="wx-next-w"></span></div>
         <div class="wx-n3">
           <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
         </div>
@@ -1010,6 +1051,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       <span class="seg" data-k="theme">
         <button type="button" data-v="dark">深色</button>
         <button type="button" data-v="light">浅色</button>
+        <button type="button" data-v="amber">琥珀</button>
       </span>
     </div>
     <!-- 大小：只改【当前选中样式】的倍率，每套样式各记各的。
@@ -1336,7 +1378,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       var o = JSON.parse(raw);
       if (!o) { return; }
       if (o.h12 === true || o.h12 === false)         { settings.h12 = o.h12; }
-      if (o.theme === 'dark' || o.theme === 'light') { settings.theme = o.theme; }
+      if (o.theme === 'dark' || o.theme === 'light' || o.theme === 'amber') {
+        settings.theme = o.theme;
+      }
       if (o.style === 'v1'  || o.style === 'v2' || o.style === 'v3') {
         settings.style = o.style;
       }
@@ -1456,6 +1500,17 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         没落状态。于是滑杆拖到哪边都不生效；只有改别的设置（走 setSetting →
         applySettings）才会把环救回来 —— 用户的实测正是"拖滑杆没用、
         关掉再打开冒号就好了"。 */
+  /* 把主题落到 DOM。
+     ⚠️ 抽成函数、而不是在 applySettings 里直接写 —— 因为【自动主题那条路径也改主题】。
+        这次加第三个主题（amber）时差点踩坑：autoThemeTick 原来只 toggle `light` 一个类，
+        从琥珀切到深/浅时 `amber` 类会残留、和新类打架，颜色就花了。
+        这和 v4.9 走带那次是同一类错（有入口只改值、不落状态），所以两个类必须一起设。
+     深色是基础值（没有 dark 类），所以这里只需要管另外两个。 */
+  function applyThemeClass() {
+    setClass(bodyEl, 'light', settings.theme === 'light');
+    setClass(bodyEl, 'amber', settings.theme === 'amber');
+  }
+
   function applyRingState() {
     setClass(bodyEl, 'ring-off', settings.ringMs <= RING_MS_OFF);
     // 环要「v3 且没关掉」；冒号呼吸在三种样式下都要跑 —— 任一需要就启动帧循环。
@@ -1474,7 +1529,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
        #ss 的 card--sm → 秒卡半尺寸（v1 样式下要摘掉） */
   function applySettings() {
     setClass(bodyEl, 'h12',      settings.h12);
-    setClass(bodyEl, 'light',    settings.theme === 'light');
+    applyThemeClass();                                       // 主题类（三个主题共用同一个入口）
     setClass(bodyEl, 'style-v1', settings.style === 'v1');
     setClass(bodyEl, 'style-v2', settings.style === 'v2');
     setClass(bodyEl, 'style-v3', settings.style === 'v3');
@@ -1496,7 +1551,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     // 手动选主题 → 自动主题同时关掉。两者【互斥】：不能出现"自动开着、
     // 但你刚手动选的颜色又被下一秒的日出日落判定覆盖回去"这种状态。
     if (k === 'theme') {
-      settings.theme = (v === 'light') ? 'light' : 'dark';
+      settings.theme = (v === 'light' || v === 'amber') ? v : 'dark';
       settings.autoTheme = false;
     }
     if (k === 'style') { settings.style = (v === 'v1' || v === 'v3') ? v : 'v2'; }
@@ -1521,8 +1576,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
      三套样式的占位不同，系数必须分别取：
        v1 平衡  卡组 13.08rem 宽 | 含舞台内边距 9.58rem
-       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.87rem
-       v3 走秒  天气栏 9.00rem 宽 | 含舞台内边距 7.61rem（间距被 CSS 收紧了）
+       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.33rem
+       v3 走秒  天气栏 8.90rem 宽 | 含舞台内边距 6.73rem（间距被 CSS 收紧了）
        （这三个数必须与下面的 FOOTPRINT 一致 —— 它们是同一组事实的两种写法。）
      用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
      分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
@@ -1540,9 +1595,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         （v3 的 padding-bottom 是 0，padding-top .24 算在下面 h 里。） */
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
-    v2: { w: 11.18, h: 8.87 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.56 = 7.67，+ .stage 的 1.2
-    v3: { w: 9.00, h: 7.61 }     // 宽度由【天气栏】9.00rem 决定（比环盒 9.42 还窄一点）；
-  };                             //   .83+1+2.88+1+1.56 = 7.27，+ 定位用的 padding-top .34
+    v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
+    v3: { w: 8.90, h: 6.73 }     // 宽度由【天气栏】8.90rem 决定（比环盒 9.42 还窄）；
+  };                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
@@ -1988,7 +2043,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     // 这里只改主题类，不走 applySettings()：主题只影响颜色，
     // 不需要重算 layout / 环几何；而且 applySettings() 末尾会调 tick()，
     // 从 tick 调过来会形成重入。
-    setClass(bodyEl, 'light', want === 'light');
+    // ⚠️ 必须走 applyThemeClass()，不能只 setClass('light',…)：多了琥珀主题之后，
+    //    从琥珀切过来时 amber 类必须一起清掉，否则两个类打架、颜色会花。
+    applyThemeClass();
     syncSegs();
   }
 
