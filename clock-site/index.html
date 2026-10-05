@@ -189,17 +189,16 @@ html, body {
       ① 这里的 height  ② 下面 style-v3 那段 padding 推导  ③ JS 里的 FOOTPRINT
    本文件有过一次实测教训 —— 只改一处会导致时钟位置或缩放上限算错。
 
-   ⚠️ 宽和高对 v3 的影响【不一样】，别看反了：
-      · 高度：v3 的缩放上限【不受它影响】。实测两向都是【宽度】在卡
-        （横屏 min(宽度项 98.3, 高度项 100.5) = 98.3；竖屏同样是宽度项）。
-        加高只影响时钟在屏幕上的位置，不缩小时钟。
-      · 宽度：这才是真正卡住 v3 的那一项。收窄它 v3 就能放大更多。
-   所以往天气栏加信息时：竖着加（加行）代价小，横着加（加栏）代价大。 */
+   ⚠️ 宽和高对 v3 的影响【不一样】，别看反了（下面都是按 1024×768 横屏 / 768×1024 竖屏算的）：
+      · 高度：卡的是 v3 的【横屏】。横屏 min(宽度项 128, 高度项 107) = 107 → 高度在卡。
+      · 宽度：卡的是 v3 的【竖屏】。竖屏 min(宽度项 96, 高度项 148) = 96 → 宽度在卡。
+   所以往天气栏加信息，两边都有代价：
+      竖着加（加行高）→ v3 横屏能放大的上限往下掉；
+      横着加（加栏宽）→ v3 竖屏能放大的上限往下掉。
+   ⚠️ 这一段曾经写作"两向都是宽度在卡"，与 FOOTPRINT 的实际数字对不上，已按公式改正。 */
 .bar--weather {
-  height:1.02rem;      /* = 2 行 × .42 行距 + .18 余量 */
-  line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
-                          它会被没有自己 line-height 的 .wx-main 继承，
-                          撑到 1.56 会让那一行占满整栏、失去 flex 余量 */
+  height:1.26rem;      /* = 行1 .84（两行 × .42）+ 行2 .42（一行）—— 见下面的网格 */
+  line-height:1.22rem; /* v1 的单行版靠它撑高；网格那套每格自带 line-height，不看它 */
   margin-top:1.2rem;
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
@@ -238,14 +237,15 @@ body.style-v3.ring-off .ring { display:none; }
    环会向上下各多出 0.5rem，1.0rem 的间距仍留得下余量。 */
 /* v3 的竖向定位：把时钟推回"比屏幕中心高 .195rem"这个观感。
    竖排自上而下：
-     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.02   合计 6.73rem
+     日期栏 .83 → 间距 1.0 → 时钟 2.88 → 间距 1.0 → 天气栏 1.26   合计 6.97rem
      时钟中心距组顶 = .83 + 1.0 + 2.88/2 = 3.27rem
-     组半高 = 6.73/2 = 3.365rem  →  时钟自然比屏幕中心高 .095rem
-   ⚠️ 这里【给不出 padding-top】。要让时钟回到"高 .195rem"需要
-        P = 竖排 − 6.93 = −0.20rem，是负数，做不到。
-        天气栏从三行减到两行后竖排变矮，时钟的自然位置本来就低了，
-        .095rem 是能给到的最接近值。
-        ⚠️ 这不是 bug，是"信息变少了"的必然结果 —— 别看到 .095 就以为算错了。
+     组半高 = 6.97/2 = 3.485rem  →  时钟自然比屏幕中心高 .215rem
+   ⚠️ 目标观感是"高 .195rem"，现在差 .02rem（≈2px）——
+      天气栏从两模块改成网格后竖向长了 .24rem，反而把时钟的自然位置推回来了。
+      （改成网格之前是 6.73rem、自然位置只高 .095rem，差 .1rem。）
+      .stage 的 padding-top 仍然归零：要靠它把那 .02rem 补回来，
+      得给 .82rem 的 padding-top，屏高预算会因此多出 .82rem，得不偿失。
+      .02rem 肉眼不可见，不补。
    速算：偏移 = 3.27 − 竖排/2 + padding-top/2 */
 body.style-v3 .stage        { padding-top:0; padding-bottom:0; }
 body.style-v3 .bar--date    { margin-bottom:1rem; }
@@ -278,83 +278,85 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 .ring-fill  { stroke:#3a3a3a; }   /* 已走部分：只是暗示 */
 .ring-flash { stroke:#3a3a3a; }   /* 满圈淡出那一层，与进度带同色，否则淡出瞬间会看出跳变 */
 
-/* v2 的天气行：内层再来一层 flex，因为外层 .bar--weather 现在要同时容纳 v1/v2 两套 */
+/* ── v2/v3 的天气栏：固定网格 ──
+   3 列 × 2 行，每个模块独占一格，五格填满、右下角那格留空：
+
+     行1（高 .84rem）  当前温度 │ 高低温   │ 未来一小时（两行）
+     行2（高 .42rem）  湿度     │ 体感温度 │ （空）
+
+   为什么是网格：用户要"每个模块占位长宽差不多，视觉上才平衡、也方便排版"。
+   ⚠️ 格子【定宽】而不是贴内容 —— 这样任何模块的文字长短变化都不会让整条栏位移，
+      正是用户最在意的那条。等宽 + 每格各自居中，整体天然对称。
+      （对比：改版前各栏宽度是自适应的，注释里自己也承认"描述长短变化时中/右两栏会跟着挪"。）
+   ⚠️ 关掉某个模块时只隐藏内容、【格子留着】—— 格子一撤，同一行剩下的格子
+      就会整体居中、和另一行的列错开，"网格"就散了。见 .wx-cell.off。
+   iOS 9 没有 CSS Grid → flex 竖排套两行 flex 横排。 */
 .wx-v2 {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:center; justify-content:center;
 }
-
-/* 左栏：天气描述 + 当前温度。
-   定宽 + 内容居中 —— 描述长度会在「晴」和「晴间多云」之间变化，
-   不定宽的话整条天气栏会重新居中、产生可见位移。 */
-.wx-main {
-  /* ⚠️ 【不要再给它定宽】。原先写死 4.0rem 是为了"描述长短变化时整条栏不位移"，
-     但那个定宽比实际文字宽得多：写「阴 26°」时文字只占约 1.2rem，左栏就空出 1.4rem ——
-     而【可见内容的中心】因此比屏幕中心偏右约 0.64rem（≈55px）。
-     用户报的"天气栏整体没有居中对齐"就是这个：不是居中失效，是定宽与内容不匹配。
-     （文字越长偏得越少：「晴间多云」时只偏 7px，所以一直没暴露。）
-     改成自适应后三栏都贴着内容，整行的可见内容自然与屏幕中轴对齐。
-     代价是描述长短变化时中/右两栏会跟着挪一点 —— 比"整条栏偏在一边"好得多。 */
-  width:auto;
-  text-align:center;
-  /* ⚠️ 字号必须写在这里，不能改上面 .bar 的 .54rem ——
-     .bar 同时管着【日期栏】，动它日期也会跟着缩。
-     天气栏是【两级】字号：
-       一级 .44rem = 当前天气（这里）+ 未来一小时的表头
-       二级 .34rem = 高低温 + 未来一小时的两行数据
-     当前天气仍比二级大一档，保住"当前温度最突出"的层级。 */
-  font-size:.44rem;
-}
-
-/* 中栏：今日最高 / 最低，上下堆叠。属于【二级】字号，与未来一小时的两行数据同级 */
-.wx-extremes {
-  /* 天气栏现在按【两个模块】看：
-       模块一 = 当前温度 + 高低温（高低温紧挨着当前温度，只留一点点缝）
-       模块二 = 未来一小时
-     所以这里 margin-left 很小；真正分隔两个模块的是 .wx-next 的 .5rem。
-     ⚠️ 宽度用 auto（盒子贴内容）—— 定宽会在两侧留下空白，空白就造成偏心。 */
-  width:auto;
-  margin-left:.16rem;
+.wx-grid {
   display:-webkit-flex; display:flex;
   -webkit-flex-direction:column; flex-direction:column;
+  -webkit-align-items:center; align-items:center;
   -webkit-justify-content:center; justify-content:center;
-  font-size:.26rem;               /* 比当前温度(.44)小、和未来一小时的数据同号 */
-  line-height:.34rem;             /* 跟着字号走（两行合计 .68rem，天气栏高 1.02rem 装得下） */
+}
+.wx-row {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+}
+.wx-r1 { height:.84rem; }     /* 两行 —— 未来一小时那格要两行，行高由它定 */
+.wx-r2 { height:.42rem; }     /* 一行 —— 湿度 / 体感温度都是「标签 值」一行 */
+
+/* 一格。定宽 + 双向居中：
+     定宽保版面（内容长短不推栏），
+     justify-content 保"内容不贴在格子左边"（flex 默认 flex-start，
+     漏了它就会看着像没对齐 —— 高低温那格当年栽过这一跤）。 */
+.wx-cell {
+  width:2.55rem;
+  display:-webkit-flex; display:flex;
+  -webkit-flex-direction:column; flex-direction:column;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+  text-align:center;
+  white-space:nowrap;
+  font-size:.26rem;              /* 二级字号 = 除当前温度外所有模块的字号 */
+  line-height:.42rem;
   letter-spacing:.02em;
 }
+/* 模块被关掉：隐藏内容但【保留格子】，网格的列因此不会错位。 */
+.wx-cell.off { visibility:hidden; }
+
+/* 模块一：天气描述 + 当前温度 —— 全栏唯一的【一级字号】。
+   ⚠️ 从 .44 降到 .36 是"等宽格子"的代价：格宽 2.55rem，
+      而 .44rem 下「晴间多云 26°」（4 汉字 + 空格 + 温度）就要 2.6rem 以上，装不进。
+   .36rem 下这个（现实的）最坏组合 ≈ 2.12rem = 格宽的 83%，余量够。
+      理论上还有个更坏的「冻毛毛雨 -26°」（4 汉字 + 三位带负号）≈ 2.48rem = 97%，
+      但那个组合现实中不存在（冻毛毛雨发生在 0℃ 附近，不会同时是 -26℃），
+      所以按 83% 那条留余量即可，不必为它再缩字号。
+   ⚠️ 还想放大只能加宽格子，而加宽会直接抬高 v3 竖屏的缩放上限
+      （fp.w 就是这一栏的宽度），是有代价的 —— 别顺手改。 */
+.wx-c-main { font-size:.36rem; }
+
+/* 模块二：今日最高 / 最低，上下两行。
+   ⚠️ 必须显式居中 —— flex 默认是 flex-start，内容会贴着格子的【左边】，
+      右边空出一截，看着就是"高低温那块没对齐"（这格当年栽过这一跤）。 */
 .wx-hi, .wx-lo {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
-  /* ⚠️ 必须显式居中 —— flex 默认是 flex-start，内容会贴着盒子的【左边】，
-     右边空出一截，看着就是"高低温那块没对齐"。 */
   -webkit-justify-content:center; justify-content:center;
   white-space:nowrap;
 }
 
-/* 最右栏：未来 1 小时 —— 与"高低温"那栏同构（上下两行）。
-   同样定宽：天气描述最长 4 个汉字、概率最长 "100%"，
-   不定宽的话这些长短变化会把整条底栏推得左右晃。 */
-.wx-next {
-  /* 3.9 → 3.2rem：字号降到二级(.34)后，最宽的一行也跟着缩 ——
-     本文件记录的实测最坏值是「图标 + 4汉字 + 100%」= 3.45rem（在 .40 字号下），
-     其中图标占 .40、纯文字占 3.05。换算到 .34 字号：3.05 ×(.34/.40) + 新图标(.35) = 2.94rem。
-     ⚠️ 所以 3.2rem 是这条的下限附近（填充 92%，与改版前的 88% 同档），
-        再窄就会溢出（nowrap + 居中，会对称挤进相邻栏）。
-        —— 一度想收到 2.7rem（那会到 109%），是算错，别照抄。
-     ⚠️ 收窄这一栏能直接抬高 v3 的缩放上限（fp.w 是宽度主导项）。 */
-  width:2.5rem;
-  margin-left:.9rem;   /* 两个大模块之间的间隔（模块一 = 当前温度+高低温） */
-  display:-webkit-flex; display:flex;
-  -webkit-flex-direction:column; flex-direction:column;
-  -webkit-justify-content:center; justify-content:center;
-  font-size:.26rem;
-  /* ⚠️ 两行的总高 = 2×行高 = .84rem，它直接决定天气栏高度、
-     进而决定 v3 横屏能放多大（横屏是高度主导）。改这里务必同时改
-     .bar--weather 高度、v3 的 padding 推导、FOOTPRINT —— 三处是一套。 */
-  line-height:.42rem;
-  letter-spacing:.02em;
-}
+/* 模块三：未来 1 小时，上下两行。
+   ⚠️ 每格 2.55rem 宽，而这一格最坏的一行是
+      「1小时后 · 阴26°」≈ 2.19rem（86%）—— 是五格里最满的一格。
+      往这里加一个汉字就会逼近格宽，加两个就会溢出
+      （nowrap + 居中 = 对称挤进左右两格）。加内容前先按这条量一遍。
+   ⚠️ 两行合计 .84rem，与行高 .wx-r1 一致 —— 改行数或行距要同时改
+      .wx-r1 的高度、.bar--weather 的高度、v3 的 padding 推导、FOOTPRINT，四处是一套。 */
 /* 两行都是「标签 + 数据」内联排列，各自按内容取宽、整栏居中。
    ⚠️ 曾经用 space-between + width:100% 让两行撑满整栏，结果是【太宽】——
       space-between 会把内容推到栏的两端，看着很散。用户要的是"两行等宽"，不是"铺满"。
@@ -372,11 +374,21 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 body.light .wx-n2 .sep { color:#b0b0b0; }
 body.amber .wx-n2 .sep { color:#a08a68; }
 /* ⚠️ 标签和数据【同字号】，只靠颜色区分 —— 标签压暗、数据用正文色。
-   所以这里【没有】字号覆盖：.lbl2 完全跟随 .wx-next 的 .26rem。
-   margin-right 是标签和数据之间的那道缝（两行都用它，所以只有这一处间距来源；
+   所以这里【没有】字号覆盖：.lbl2 完全跟随 .wx-cell 的 .26rem。
+   margin-right 是标签和数据之间的那道缝（每个用到它的模块都靠这一处间距；
    .pct 那边不要再加 margin，否则会双份）。 */
 .lbl2 { color:#555; margin-right:.08rem; }
 body.light .lbl2 { color:#b0b0b0; }
+
+/* 模块四 / 五：湿度、体感温度 —— 单行「标签 + 值」，与未来一小时那两行同一个写法。
+   单独写一条 .wx-line 而不是复用 .wx-n2/.wx-n3：那两个是"两行模块"的行，
+   名字里带着行号，给单行模块用会读不通。 */
+.wx-line {
+  display:-webkit-flex; display:flex;
+  -webkit-align-items:center; align-items:center;
+  -webkit-justify-content:center; justify-content:center;
+  white-space:nowrap;
+}
 
 /* 降雨图标：三道斜线 —— 纯 CSS，不用 emoji 也不用字体字形（跨设备字形不可控）。
    ⚠️ 刻意【不用水滴】：水滴会被读成"湿度"，而这里表达的是"降雨概率"。
@@ -778,8 +790,10 @@ body.h12 .ampm { display:block; }
 /* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
 .panel .page      { display:none; min-height:152px; }   /* = 4 行 × 38
    ⚠️ 这个 min-height 必须等于【最长那一页的行数 × .row 的高度】，三页才等高、
-      切标签页时面板不跳高度。当前最长的是「时间」页（4 行：小时制/冒号/走带/农历）。
-      往任意一页加行数超过它时，这里要跟着加。 */
+      切标签页时面板不跳高度。当前最长的是 4 行，有【两页】并列为 4 行：
+        「时间」小时制/冒号/走带/农历
+        「天气」数据源/自动主题/模块/位置
+      往任意一页加行数超过 4 时，这里要跟着加。 */
 .panel .page.on   { display:block; }
 
 .panel .row {
@@ -815,6 +829,13 @@ body.h12 .ampm { display:block; }
   background:#3d3d3d;
   color:#fff;
 }
+/* 多选版（现在只有「模块」那一行用）：视觉完全沿用 .seg，只收窄内边距。
+   ⚠️ 这一行要挤五个按钮，而面板内宽 308px 减去「模块」两个字只剩 276px；
+      默认的 7px 12px 内边距下五个按钮合计 274px（当前 52 + 高低温 66 + 未来 52
+      + 湿度 52 + 体感 52），只差 2px 就会换行 —— 换成 7px 8px 后是 234px，
+      留出 42px 余量。
+   加/改模块按钮时务必重算这一行：字号 14px 下每个汉字约 14px，内边距每侧 8px。 */
+.panel .seg--multi button { padding:7px 8px; }
 /* 控件二：步进器（数值型，− 值 +）。目前只有「大小」用它。 */
 .panel .step {
   display:-webkit-flex; display:flex;
@@ -996,39 +1017,64 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
               （两栏都定宽，所以描述长短变化不会让整条栏位移） -->
   <div class="bar bar--weather">
     <div class="wx-v2">
-      <div class="wx-main" id="wx-main">-</div>
-      <!-- 箭头改用内联 SVG —— 固定图形，不再用伪元素拼。
-           伪元素那套要靠 margin-left / top 手算位置，而伪元素默认是 content-box，
-           两条边框会把实际宽度撑大，一算就错位（歪过一次）。
-           SVG 里「箭头」和「杆」是两条独立路径，那道空隙就是它们 y 坐标之差，精确可控；
-           圆角交给 stroke-linecap / linejoin，不用自己凑。
-           viewBox 12×24：箭头 M2.5,7.5 → 6,3.5 → 9.5,7.5（^ 形），杆 6,11.5 → 6,20.5 ——
-           两段相差 4 个单位（元素高的 1/6），就是图上那道缝。
-           stroke 颜色交给 CSS（.arw-up path / .arw-dn path），三个主题各自覆盖。 -->
-      <div class="wx-extremes">
-        <div class="wx-hi"><svg class="arw arw-up" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 9 L7 3.2 L12.7 9"/><path d="M7 11.5 L7 20.5"/></svg><span id="wx-hi">-</span></div>
-        <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 15 L7 20.8 L12.7 15"/><path d="M7 12.5 L7 3.5"/></svg><span id="wx-lo">-</span></div>
-      </div>
-      <!-- 最右栏：未来一小时。两行：
-             ① 「1小时后」+ 该小时的天气与温度    ② [雨图标]「降雨概率」+ 数值
-           ⚠️ 两行的高度预算：2 × .42 行距 = .84rem 内容，天气栏给了 1.02rem（+ .18 余量）。
-              改行数或行距必须同步 .bar--weather 的高度、v3 的 padding 推导、FOOTPRINT —— 三处一套。
-              （这一栏的高度【直接决定 v3 横屏能放大多少】：
-                从三行减到两行后，天气栏变矮，v3 上限跟着涨了一档。）
+      <div class="wx-grid">
+        <!-- ── 行 1：三个一级模块 ── -->
+        <div class="wx-row wx-r1">
+          <div class="wx-cell wx-c-main" id="wx-c-main"><span id="wx-main">-</span></div>
 
-           两行【字号一致】（都跟随 .wx-next 的 .26rem），靠【颜色】区分标签与数据：
-           标签用压暗的 .lbl2，数据用正文色。
-           ⚠️ 标签写死在 HTML 里。showWeatherPlaceholder() 只清数据不清标签 ——
-              所以"没拉到天气"时看到的是「1小时后」「降雨概率」后面空着。
-              这是【有意】的（比整行消失更容易认出是天气没数据），别当成 bug 改掉。 -->
-      <div class="wx-next">
-        <div class="wx-n2"><span class="lbl2">1小时后</span><span class="sep">·</span><span id="wx-next-w"></span></div>
-        <div class="wx-n3">
-          <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
+          <!-- 箭头用内联 SVG —— 固定图形，不再用伪元素拼。
+               伪元素那套要靠 margin-left / top 手算位置，而伪元素默认是 content-box，
+               两条边框会把实际宽度撑大，一算就错位（歪过一次）。
+               SVG 里「箭头」和「杆」是两条独立路径，那道空隙就是它们 y 坐标之差，精确可控；
+               圆角交给 stroke-linecap / linejoin，不用自己凑。
+               viewBox 14×24：箭头 M1.3,9 → 7,3.2 → 12.7,9（^ 形），杆 7,11.5 → 7,20.5 ——
+               两段之间的缝由 y 坐标差决定。
+               上下两个箭头是【坐标镜像】写出来的，不走 scaleY(-1)（见 CSS 那段注释）。
+               stroke 颜色交给 CSS（.arw-up path / .arw-dn path），三个主题各自覆盖。 -->
+          <div class="wx-cell wx-c-extremes" id="wx-c-extremes">
+            <div class="wx-hi"><svg class="arw arw-up" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 9 L7 3.2 L12.7 9"/><path d="M7 11.5 L7 20.5"/></svg><span id="wx-hi">-</span></div>
+            <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 15 L7 20.8 L12.7 15"/><path d="M7 12.5 L7 3.5"/></svg><span id="wx-lo">-</span></div>
+          </div>
+
+          <!-- 未来一小时。两行：
+                 ① 「1小时后」+ 该小时的天气与温度    ② [雨图标]「降雨概率」+ 数值
+               ⚠️ 两行的高度预算：2 × .42 行距 = .84rem，正好等于 .wx-r1 的高度 ——
+                  改行数或行距必须同步 .wx-r1、.bar--weather 的高度、
+                  v3 的 padding 推导、FOOTPRINT，四处是一套。
+                  （这一格的高度【直接决定 v3 横屏能放大多少】：横屏是高度在卡。）
+               两行【字号一致】（都跟随 .wx-cell 的 .26rem），靠【颜色】区分标签与数据：
+               标签用压暗的 .lbl2，数据用正文色。
+               ⚠️ 标签写死在 HTML 里。showWeatherPlaceholder() 只清数据不清标签 ——
+                  所以"没拉到天气"时看到的是「1小时后」「降雨概率」后面空着。
+                  这是【有意】的（比整行消失更容易认出是天气没数据），别当成 bug 改掉。 -->
+          <div class="wx-cell wx-c-next" id="wx-c-next">
+            <div class="wx-n2"><span class="lbl2">1小时后</span><span class="sep">·</span><span id="wx-next-w"></span></div>
+            <div class="wx-n3">
+              <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 行 2：三个次级模块（只有一个数据，所以是「标签 + 值」一行）──
+             ⚠️ 第三格是【空的占位格，但必须留着】——
+                撤掉它，这一行就只剩两格、会整体居中，列和上一行错开，网格就散了。
+             湿度和体感温度这两个数据【没有各自请求】：它们和当前温度同在
+             Open-Meteo 的 current 里（多带两个字段，零成本），所以失败路径
+             和别的天气数据完全一致，不用单独兜。 -->
+        <div class="wx-row wx-r2">
+          <div class="wx-cell wx-c-humidity" id="wx-c-humidity">
+            <div class="wx-line"><span class="lbl2">湿度</span><span id="wx-hum"></span></div>
+          </div>
+          <div class="wx-cell wx-c-feels" id="wx-c-feels">
+            <div class="wx-line"><span class="lbl2">体感温度</span><span id="wx-feel"></span></div>
+          </div>
+          <div class="wx-cell wx-c-blank"></div>
         </div>
       </div>
     </div>
-    <!-- v1 版：单行「描述 当前温度 最低/最高」，无箭头 -->
+    <!-- v1 版：单行「描述 当前温度 最低/最高」，无箭头。
+         ⚠️ v1 是另一套紧凑排布，【不参与】上面的模块开关 ——
+            它本来就只有一行，塞不下湿度/体感温度。开关只影响 v2/v3。 -->
     <div class="wx-v1" id="wx-v1">-</div>
   </div>
 
@@ -1136,6 +1182,23 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       <span class="seg" data-k="autoTheme">
         <button type="button" data-v="1">开</button>
         <button type="button" data-v="0">关</button>
+      </span>
+    </div>
+    <!-- 天气栏的五个格子，各自独立开关。
+         ⚠️ 这是面板里【唯一的多选控件】：别的 .seg 都是"从一组里选一个"，
+            这里每个按钮各管各的，所以 syncSegs 对它是"按集合刷"而不是"比值"，
+            点击也是"取反"而不是"设为"。视觉沿用 .seg 那套，只把内边距收窄
+            （五个按钮用默认内边距合计 274px，这行只剩 276px，一点余量都没有）。
+         关掉的模块【格子留着、只隐藏内容】，所以关掉后版面不塌、列不会错位。
+         ⚠️ 只对 v2/v3 的网格有效 —— v1 是单行紧凑排布，不参与。 -->
+    <div class="row">
+      <span class="lbl">模块</span>
+      <span class="seg seg--multi" data-k="wxShow">
+        <button type="button" data-v="main">当前</button>
+        <button type="button" data-v="extremes">高低温</button>
+        <button type="button" data-v="next">未来</button>
+        <button type="button" data-v="humidity">湿度</button>
+        <button type="button" data-v="feels">体感</button>
       </span>
     </div>
     <!-- 位置 = 经纬度。⚠️ 默认【空】—— 坐标是隐私，仓库是公开的，
@@ -1278,12 +1341,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   };
 
   var dateEl  = document.getElementById('date');
-  var wxMain  = document.getElementById('wx-main');   // v2 左栏：描述 + 当前温度
-  var wxHi    = document.getElementById('wx-hi');     // v2 右栏上行：最高温
-  var wxLo    = document.getElementById('wx-lo');     // v2 右栏下行：最低温
-  var wxV1    = document.getElementById('wx-v1');     // v1 单行版
-  var wxNextW = document.getElementById('wx-next-w'); // v2/v3 最右栏上行：未来 1 小时的天气
-  var wxNextP = document.getElementById('wx-next-p'); // v2/v3 最右栏下行：那一小时的降雨概率
+  var wxMain  = document.getElementById('wx-main');   // 格1：描述 + 当前温度
+  var wxHi    = document.getElementById('wx-hi');     // 格2 上行：最高温
+  var wxLo    = document.getElementById('wx-lo');     // 格2 下行：最低温
+  var wxV1    = document.getElementById('wx-v1');     // v1 单行版（不参与网格）
+  var wxNextW = document.getElementById('wx-next-w'); // 格3 上行：未来 1 小时的天气
+  var wxNextP = document.getElementById('wx-next-p'); // 格3 下行：那一小时的降雨概率
+  var wxHum   = document.getElementById('wx-hum');    // 格4：相对湿度
+  var wxFeel  = document.getElementById('wx-feel');   // 格5：体感温度
   var ampmEl  = document.getElementById('ampm');
   var gearEl  = document.getElementById('gear');
   var panelEl = document.getElementById('panel');
@@ -1312,7 +1377,16 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
                     // 仓库是公开的，这里不带任何真实坐标（见文件顶部「配置」那段）。
                     geo:'',
                     lunar:false,                                      // 日期后面附农历（默认关）
+                    // 天气栏网格的五格各显示哪几个。**这是面板里唯一的多选项** ——
+                    // 别的设置都是"从一组里选一个"，这个每个键各管各的。
+                    // 默认【五个全开】：新模块默认关掉的话，网格第二行会是一条空白，
+                    // 而网格的高度是固定的（关掉模块不塌），看着像多出来一段莫名其妙的间距。
+                    wxShow: { main:true, extremes:true, next:true, humidity:true, feels:true },
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
+
+  /* wxShow 的键，按【网格里的位置】顺序排（行1 从左到右，再行2）。
+     载入校验和 syncSegs 都遍历它 —— 新增模块只要往这里和 DOM 各加一处。 */
+  var WX_MODULES = ['main', 'extremes', 'next', 'humidity', 'feels'];
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
   var SIZE_MIN = 0.70, SIZE_MAX = 1.50, SIZE_STEP = 0.05;
@@ -1400,6 +1474,15 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       if (o.lunar === true || o.lunar === false)     { settings.lunar = o.lunar; }
       // 经纬度：只收字符串，格式合法性交给 parseGeo() 判（它拿不准就当没填）
       if (typeof o.geo === 'string') { settings.geo = o.geo; }
+      // 天气模块开关：逐键校验，只认 true/false。
+      // 缺的键保持默认（旧存档里没有 wxShow，新模块就会按默认值出现）——
+      // 所以这里【不能】整体替换，否则以后新增的模块在旧存档上永远是关的。
+      if (o.wxShow && typeof o.wxShow === 'object') {
+        for (var wi = 0; wi < WX_MODULES.length; wi++) {
+          var wk = WX_MODULES[wi];
+          if (o.wxShow[wk] === true || o.wxShow[wk] === false) { settings.wxShow[wk] = o.wxShow[wk]; }
+        }
+      }
       settings.ringMs = clampRingMs(o.ringMs);   // clamp 自己会把脏值/缺失退回默认
       // 旧存档迁移：v4.7 及以前把"关/连续"存在独立的 ringMode 里。
       // 现在它们由 ringMs 的两个哨兵值表示，所以把旧值翻译过来 ——
@@ -1424,23 +1507,50 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     if (on) { el.classList.add(name); } else { el.classList.remove(name); }
   }
 
-  /* 让面板里的按钮反映当前设置 */
+  /* 让面板里的按钮反映当前设置。
+     ⚠️ 这里【两种语义】并存，别混：
+        · 互斥的（绝大多数）—— 一条 data-k 对应一个值，按钮逐个与它比较；
+        · 多选的（.seg--multi，目前只有「模块」那行）—— 一条 data-k 对应一个【集合】，
+          每个按钮的开关各自独立，根本没有"当前值"可比。
+        新增一条多选行时别顺手塞进下面那条三元链 —— 它会静默地把多选当互斥刷
+        （表现是：点了好几个，只有最后一个亮着）。 */
   function syncSegs() {
     var segs = panelEl.querySelectorAll('.seg');
     for (var i = 0; i < segs.length; i++) {
       var seg  = segs[i];
       var k    = seg.getAttribute('data-k');
-      var cur  = (k === 'h12')      ? (settings.h12 ? '1' : '0')
+      var btns = seg.getElementsByTagName('button');
+      var j;
+
+      if (k === 'wxShow') {                       // ← 多选：按集合刷
+        for (j = 0; j < btns.length; j++) {
+          setClass(btns[j], 'on', !!settings.wxShow[btns[j].getAttribute('data-v')]);
+        }
+        continue;
+      }
+
+      var cur  = (k === 'h12')      ? (settings.h12 ? '1' : '0')     // ← 互斥：比值
                : (k === 'colon')    ? (settings.colon ? '1' : '0')
                : (k === 'lunar')    ? (settings.lunar ? '1' : '0')
                : (k === 'autoTheme')? (settings.autoTheme ? '1' : '0')
                : (k === 'dataSrc')  ? settings.dataSrc
                : (k === 'theme')    ? settings.theme
                :                      settings.style;   // 兜底 = 卡片样式（那个 .seg 没有 data-k 分支）
-      var btns = seg.getElementsByTagName('button');
-      for (var j = 0; j < btns.length; j++) {
+      for (j = 0; j < btns.length; j++) {
         setClass(btns[j], 'on', btns[j].getAttribute('data-v') === cur);
       }
+    }
+  }
+
+  /* 把「模块」开关落到 DOM。
+     ⚠️ 关掉一个模块【只隐藏它那格的内容，格子留下】（CSS 里的 .wx-cell.off）——
+        格子一撤，同一行剩下的格子会整体居中、和另一行的列错开，
+        "网格"就散了。这也是"关掉模块后版面不塌"的实现方式。 */
+  function applyWxModules() {
+    for (var i = 0; i < WX_MODULES.length; i++) {
+      var k    = WX_MODULES[i];
+      var cell = document.getElementById('wx-c-' + k);
+      if (cell) { setClass(cell, 'off', !settings.wxShow[k]); }
     }
   }
 
@@ -1556,6 +1666,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     layout();     // 三套样式的根字号系数不同，换样式必须重算
     initRing();   // 环只在 v3 下可见，这时才量得到真实周长
     applyRingState();   // ring-off 类 + 帧循环启停
+    applyWxModules();   // 天气模块的显示/隐藏（只改 visibility，不动尺寸 —— 不必重算 layout）
     syncSegs();
     syncControls();  // "大小"显示的是【当前样式】的倍率，换样式要跟着刷
     tick();       // 12/24 制切换后立刻按新格式重画
@@ -1580,6 +1691,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       settings.dataSrc = (v === 'demo' || v === 'offline') ? v : 'live';
       fetchWeather();           // 立刻用新数据源重画一次，不用等下一个刷新周期
     }
+    // 天气模块开关：多选，所以是【取反】而不是"设为 v"。
+    // 只认 WX_MODULES 里的键 —— 将来按钮和设置项对不上时，宁可什么都不做，
+    // 也不要往 settings.wxShow 里塞一个野键（那个键会跟着存进 localStorage）。
+    if (k === 'wxShow') {
+      for (var wj = 0; wj < WX_MODULES.length; wj++) {
+        if (WX_MODULES[wj] === v) { settings.wxShow[v] = !settings.wxShow[v]; break; }
+      }
+    }
     saveSettings();
     applySettings();
   }
@@ -1591,8 +1710,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
      三套样式的占位不同，系数必须分别取：
        v1 平衡  卡组 13.08rem 宽 | 含舞台内边距 9.58rem
-       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.33rem
-       v3 走秒  天气栏 8.90rem 宽 | 含舞台内边距 6.73rem（间距被 CSS 收紧了）
+       v2 层次  卡组 11.18rem 宽 | 含舞台内边距 8.57rem
+       v3 走秒  天气栏 7.65rem 宽 | 含舞台内边距 6.97rem（间距被 CSS 收紧了）
        （这三个数必须与下面的 FOOTPRINT 一致 —— 它们是同一组事实的两种写法。）
      用同一个系数的话，v1 在竖屏会顶到屏幕边缘。
      分开取的代价是切换样式时数字尺寸会变 —— 但三套外观本来就整体不同，
@@ -1610,9 +1729,12 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         （v3 的 padding-bottom 是 0，padding-top .24 算在下面 h 里。） */
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
-    v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
-    v3: { w: 7.75, h: 6.73 }     // 宽度由【天气栏】决定 = 两模块最坏之和：
-  };                             //   模块一 3.44+.16+.75 + 模块间 .9 + 模块二 2.5 = 7.75rem                             //   .83+1+2.88+1+1.02 = 6.73（padding-top 归零）
+    v2: { w: 11.18, h: 8.57 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.26 = 7.37，+ .stage 的 1.2
+    v3: { w: 7.75, h: 6.97 }     // 宽度由【天气栏】决定 = 网格 3 列 × 2.55 = 7.65rem。
+  };                             //   ⚠️ 7.75 是沿用网格改造【之前】的值：新网格 7.65 比它窄，
+                                 //      用旧值当上界依然成立，缩放上限因此一位不变（不必重测）。
+                                 //      哪天格子加宽到超过 7.75，必须把这个数一起改。
+                                 //   高度 .83+1+2.88+1+1.26 = 6.97（padding-top 归零）
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
   function layout() {
@@ -1626,10 +1748,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     /* 硬上限：用户把倍率调大时，不能让内容顶出屏幕。
        各样式能到的实际倍率【由夹取决定，不是由 SIZE_MAX 决定】——
        把滑杆推到 150% 也不会真的更大，先被这里挡住。
-       当前值（横屏 / 竖屏）：v1 约 128% / 128%，v2 约 122% / 130%，v3 约 114% / 125%。
-       其中 v3 横屏、v2 横屏是【高度】在卡，其余都是宽度。
-       ⚠️ v3 横屏对天气栏高度极敏感（行距 ×3 + 标题间距 = 栏高）：
-          行距收到 .42 后回到 114%，拉到 .58 会掉到 104%。
+       当前值（横屏 / 竖屏，按 1024×768 算）：v1 约 128% / 128%，v2 约 127% / 130%，
+                                              v3 约 124% / 146%。
+       其中 v2 横屏、v3 横屏是【高度】在卡，其余都是宽度。
+       ⚠️ 这几个数是【算出来的】，不是量出来的：先按上面的 k/kh 得到 100% 时的根字号，
+          再用 ceil = min(w×FIT/fp.w, h×FIT/fp.h) 除以它。改了 FOOTPRINT 就要重算，
+          别照抄旧值（这段曾经长期挂着改版前的旧数字，与 FOOTPRINT 对不上）。
+       ⚠️ v3 横屏对天气栏高度极敏感 —— 天气栏每高一格，横屏的上限就掉一档：
+          天气栏 1.02rem 时约 129%，改成网格的 1.26rem 后是 124%。
        ⚠️ 这是【刻意】的，不是倍率失灵。夹取放在 layout() 而不是放进步进器的
           可选范围里，是因为上限随【横竖屏】变化（竖屏更宽裕），
           而倍率是全局设置 —— 放步进器里一旋转就被绕过去了。 */
@@ -2099,6 +2225,13 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     if (t.nodeValue !== str) { t.nodeValue = str; }
   }
 
+  /* 把接口返回的数值变成「整数 + 后缀」的文本。取不到就返回空串。
+     ⚠️ 绝不返回 "NaN°" 或 "undefined%" —— 接口换字段、老数据里缺项都可能发生，
+        而这两串东西出现在床头时钟上比空着难看得多。宁可空着。 */
+  function numText(v, suffix) {
+    return (typeof v === 'number' && !isNaN(v)) ? Math.round(v) + suffix : '';
+  }
+
   /* 把接口返回的 "2026-10-02T06:14" 解析成 Date。
      接口给的是【本地时间】且不带时区后缀 —— 不能直接丢给 new Date()：
      ES5 与 ES6 对"无时区的日期时间串"的解释不一致，各家引擎也不同。
@@ -2148,10 +2281,16 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     readSun(day);
     var nx = nextHour(d.hourly);
 
-    // v2/v3 三栏版
-    setText(wxMain, desc + ' ' + now + '°');   // 左栏：描述 + 当前温度
-    setText(wxHi,   hi + '°');                 // 中栏上行，前面的红↑写在 HTML 里
-    setText(wxLo,   lo + '°');                 // 中栏下行，前面的蓝↓写在 HTML 里
+    // v2/v3 网格版
+    setText(wxMain, desc + ' ' + now + '°');   // 格1：描述 + 当前温度
+    setText(wxHi,   hi + '°');                 // 格2 上行，前面的红↑写在 HTML 里
+    setText(wxLo,   lo + '°');                 // 格2 下行，前面的蓝↓写在 HTML 里
+    // 格4 / 格5：相对湿度与体感温度。
+    // ⚠️ 这两个【不额外请求】—— 它们和当前温度同在接口的 current 里，
+    //    只是请求参数多带两个字段。所以失败路径与别的天气数据完全一致，
+    //    不用单独兜底，也不会出现"其它模块有数据、这两格没有"的半死状态。
+    setText(wxHum,  numText(cur.relative_humidity_2m, '%'));
+    setText(wxFeel, numText(cur.apparent_temperature, '°'));
     if (nx) {
       // 第二行「阴 26°」：该小时的天气 + 温度。
       // ⚠️ 温度可能缺（接口异常 / 老数据），缺了就只显示天气描述，不要冒出「NaN°」
@@ -2196,7 +2335,11 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     }
     var today = stamp(base).slice(0, 10);
     return {
-      current: { temperature_2m: 27.4, weather_code: 2 },
+      // ⚠️ 字段要和真实接口【一模一样】，包括新增的湿度和体感温度 ——
+      //    示例模式正是用来看版面的，这里缺一项，那两格在示例下就是空的，
+      //    改版式时根本看不出真实效果。
+      current: { temperature_2m: 27.4, weather_code: 2,
+                 relative_humidity_2m: 68, apparent_temperature: 29.6 },
       daily:   { temperature_2m_max: [30.8], temperature_2m_min: [24.3],
                  sunrise: [today + 'T06:14'], sunset: [today + 'T18:09'] },
       hourly:  { time: time,
@@ -2211,6 +2354,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   function showWeatherPlaceholder() {
     setText(wxMain, '-'); setText(wxHi, '-'); setText(wxLo, '-');
     setText(wxNextW, ''); setText(wxNextP, '');
+    setText(wxHum, '-');  setText(wxFeel, '-');   // 与格1 一致：有标签的格子用「-」，没标签的留空
     setText(wxV1, '-');
     sunToday = null;
   }
@@ -2255,7 +2399,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     var url = '/weather'
             + '?latitude='  + geo.lat
             + '&longitude=' + geo.lon
-            + '&current=temperature_2m,weather_code'
+            // current 里多带两个字段给湿度 / 体感温度两格用 —— 同一个请求，零额外开销
+            + '&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature'
             + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset'
             + '&hourly=precipitation_probability,weather_code,temperature_2m'
             // timezone=auto：由坐标自己定。写死时区等于又泄露一次位置
@@ -2289,8 +2434,19 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   }
 
   /* ================= 事件绑定 ================= */
-  // 禁掉滚动回弹与双指缩放
-  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, false);
+  /* 禁掉滚动回弹与双指缩放。
+     ⚠️ 但【放行 input / textarea / select】——
+        页面本身是 overflow:hidden，没有可滚的东西，拦不拦都不影响回弹；
+        而在老 WebKit（这台 iPad 2 是 iOS 9）上，对触摸事件调 preventDefault
+        会把滑杆的原生拖动一起废掉：拇指抓得住、就是拖不动。
+        （新 iPad / iPhone 走的是另一条路径，所以只有老设备中招 ——
+          同一份代码两边表现不同，差别在引擎，不在逻辑。） */
+  document.addEventListener('touchmove', function (e) {
+    var t   = e.target;
+    var tag = (t && t.tagName) ? t.tagName.toUpperCase() : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
+    e.preventDefault();
+  }, false);
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, false);
 
   window.addEventListener('resize', layout, false);
@@ -2408,7 +2564,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       settings.ringMs = clampRingMs(parseInt(ringRange.value, 10));  // 值本身就是毫秒
       if (persist) { saveSettings(); }
       // 只刷读数，不写回 ringRange.value ——
-      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）
+      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）。
+      // （唯一的例外是下面那条触摸兜底：它是在原生【完全不工作】时才接管的，
+      //   不写回的话滑块根本不会跟着手指动，读数和滑块就分家了。）
       var el = document.getElementById('ring-ms-val');
       if (el) { setText(el, ringLabel(settings.ringMs)); }
       // ⚠️ 别漏这一句：滑杆拖着拖着会跨过「关」这一档，开关类和帧循环都得跟着变。
@@ -2416,9 +2574,78 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       applyRingState();
       armAutoHide();     // 拖动期间别让面板 15 秒自动收起
     };
+
+    /* 原生滑杆最近一次【真的动过】是什么时候（0 = 这次开机还没见过）。
+       能用的设备上原生拖动会持续派发 input/change，这个时间戳一直很新；
+       老设备上原生压根不派发，它永远停在 0 —— 这就是兜底的启动信号。 */
+    var nativeAlive = 0;
+
     // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
-    ringRange.addEventListener('input',  function () { onSlide(false); }, false);
-    ringRange.addEventListener('change', function () { onSlide(true);  }, false);
+    ringRange.addEventListener('input',  function () { nativeAlive = Date.now(); onSlide(false); }, false);
+    ringRange.addEventListener('change', function () { nativeAlive = Date.now(); onSlide(true);  }, false);
+
+    /* ── 触摸兜底：只为"原生拖不动"的老 WebKit ──
+       自己按手指的 x 算值，并且【走同一个 onSlide 入口】——两条路殊途同归，不各写各的。
+       ⚠️ 不做 UA 判断（UA 判断最容易过时，而且这问题本来就跨版本）。
+          改用"原生最近有没有真的动过"当开关：原生一动，兜底当场退位并保持到本次手势结束；
+          下个手势若原生还是没动静，兜底重新接管。
+          于是在能用的设备上这套代码等于不存在，在不能用的设备上它就是全部。 */
+    var NATIVE_GRACE = 1000;   // 原生超过这么久没动静，就认为它"死了"
+    var THUMB_PX = 20;         // ⚠️ 必须与 CSS 里 .rng::-webkit-slider-thumb 的 width 一致
+    var fbDragging = false;    // 本次手势是否由兜底接管
+    var fbTimer    = null;
+
+    /* 手指 x → 毫秒。滑块【中心】的行程是 trackLeft+THUMB/2 → trackRight−THUMB/2，
+       不是整条轨道宽 —— 拿轨道宽去算，两端会整体偏掉半个滑块。 */
+    function valueFromX(clientX) {
+      var r    = ringRange.getBoundingClientRect();
+      var span = r.width - THUMB_PX;
+      if (span <= 0) { return RING_MS_MIN; }
+      var ratio = (clientX - r.left - THUMB_PX / 2) / span;
+      if (ratio < 0) { ratio = 0; }
+      if (ratio > 1) { ratio = 1; }
+      return RING_MS_MIN
+           + Math.round(ratio * (RING_MS_MAX - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
+    }
+    function touchX(e) {
+      var t = (e.touches && e.touches.length) ? e.touches[0]
+            : ((e.changedTouches && e.changedTouches.length) ? e.changedTouches[0] : null);
+      return t ? t.clientX : null;
+    }
+    function fbApply(x) {
+      // 原生醒了（哪怕只是刚刚）→ 立刻让位，这次手势剩下的部分全交给它
+      if (Date.now() - nativeAlive < NATIVE_GRACE) { fbDragging = false; return; }
+      if (x === null) { return; }
+      var v = clampRingMs(valueFromX(x));
+      if (v === settings.ringMs) { return; }   // 同值不重复处理 —— 两条路共存的去重
+      ringRange.value = v;                     // 原生不动，滑块只能靠这一句跟着手指走
+      onSlide(false);
+    }
+
+    ringRange.addEventListener('touchstart', function (e) {
+      fbDragging = false;
+      var x = touchX(e);
+      if (fbTimer) { clearTimeout(fbTimer); }
+      // 先给原生 180ms：能用的设备这时早就派发 input 了。
+      // 一上来就抢的话，会和原生同时写值，滑块在手指底下轻微发抖。
+      fbTimer = setTimeout(function () {
+        fbTimer = null;
+        if (Date.now() - nativeAlive < NATIVE_GRACE) { return; }   // 原生在管，本次不碰
+        fbDragging = true;
+        fbApply(x);
+      }, 180);
+    }, false);
+    ringRange.addEventListener('touchmove', function (e) {
+      if (!fbDragging) { return; }               // 原生在管，一个字节都不碰
+      fbApply(touchX(e));
+      if (fbDragging) { e.preventDefault(); }    // 自己接管时才拦（见上面"放行 input"那段）
+    }, false);
+    ringRange.addEventListener('touchend', function () {
+      if (!fbDragging) { return; }
+      fbDragging = false;
+      saveSettings();                            // 兜底这条路自己存盘（对应原生的 change）
+    }, false);
+    ringRange.addEventListener('touchcancel', function () { fbDragging = false; }, false);
   }
 
   // 点面板和齿轮以外的任何地方 → 收起。
