@@ -1357,30 +1357,36 @@ body.amber .panel .ver { color:#6b5a44; }
           HTML 里没写就是空字符串、不是浏览器内部的默认值。
        ⚠️ 位置的正负：【正 = 向下】。读数用 ASCII 减号（见 JS 里 modYLabel 的注释）。
        ⚠️ 这四根滑杆不走「大小」那个步进器 —— 拖动比连点加减号直观得多，
-          而且它们本来就是连续量。 -->
+          而且它们本来就是连续量。
+
+       ⚠️ 范围【故意比实际能走的更宽】（大小 0.5~2.0、位置 ±3rem）：
+          真正能到哪由屏幕余量 / 溢出闸门自动封顶，三套样式共用这一组范围。
+          所以读数会显示你设的值，实际位置自己收着 —— 和「外观」页那个
+          「大小」步进器一个路子（设 150% 可能只兑现到 122%）。
+          真按"实际能走的量"去设范围的话，三套样式要各配一套，太碎。 -->
   <div class="page" data-page="layout">
     <div class="row" data-k="dateScale">
       <span class="lbl">日期大小</span>
       <input class="rng" type="range" id="date-scale"
-             min="0.5" max="1.5" step="0.05" value="1">
+             min="0.5" max="2" step="0.05" value="1">
       <span class="val" id="date-scale-val">100%</span>
     </div>
     <div class="row" data-k="dateY">
       <span class="lbl">日期位置</span>
       <input class="rng" type="range" id="date-y"
-             min="-1" max="1" step="0.05" value="0">
+             min="-3" max="3" step="0.05" value="0">
       <span class="val" id="date-y-val">0rem</span>
     </div>
     <div class="row" data-k="wxScale">
       <span class="lbl">天气大小</span>
       <input class="rng" type="range" id="wx-scale"
-             min="0.5" max="1.5" step="0.05" value="1">
+             min="0.5" max="2" step="0.05" value="1">
       <span class="val" id="wx-scale-val">100%</span>
     </div>
     <div class="row" data-k="wxY">
       <span class="lbl">天气位置</span>
       <input class="rng" type="range" id="wx-y"
-             min="-1" max="1" step="0.05" value="0">
+             min="-3" max="3" step="0.05" value="0">
       <span class="val" id="wx-y-val">0rem</span>
     </div>
   </div>
@@ -1405,7 +1411,7 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️⚠️ 【每改一版都要改这一个字符串】，否则面板上显示的和 `版本记录.md` 会对不上。
          只此一处，不要在别处再写死版本号。
          每次定版时与 版本记录.md 的新小节标题、以及备份 zip 的文件名保持一致。 */
-  var APP_VER = 'v4.32';
+  var APP_VER = 'v4.33';
 
   // 天气刷新间隔：10 分钟。
   // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
@@ -1596,11 +1602,15 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️ 这两组值是【三套样式共用一套】，不像 sizeMul 那样按样式分键 ——
         它们描述的是"我要这两栏多大、在哪"，与卡片样式无关。
      位置的正负：【正 = 向下】，与 CSS 的 translateY 同向。
-     ⚠️ 上下位置的范围只给 ±1.0rem（不是 ±1.5）：日期栏往下走约 .78rem 就贴到时钟、
-        天气栏往上走约 1.2rem 就压到数字上，再往外的行程是废的 ——
-        而且行程越短，每格越宽、越好拖。 */
-  var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 1.50;
-  var MOD_Y_MAX = 1.00;
+
+     ⚠️ 滑杆的取值范围【故意给得比实际能走的更宽】——
+        真正能到哪由【屏幕余量 / 溢出闸门】自动封顶（见 applyModTransforms），
+        和「外观」页那个「大小」步进器一个路子：设的是"想要多少"，
+        能兑现多少由几何说了算。所以读数会显示你设的值，实际位置自己收着。
+        这样三套样式（余量差三倍）共用一组滑杆范围，不用各配一套。
+        位置 ±3rem 是量出来的：余量最紧的 v1 横屏约 ±1.4rem、最松的 v3 竖屏约 ±3.4rem。 */
+  var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 2.00;
+  var MOD_Y_MAX = 3.00;
 
   function clampModScale(v) {
     if (typeof v !== 'number' || isNaN(v)) { return 1; }
@@ -2120,9 +2130,13 @@ body.amber .panel .ver { color:#6b5a44; }
     var w = window.innerWidth;
     var isV1 = (settings.style === 'v1');
 
-    // 横向闸门：与天气栏同款、同构（min(用户值, 刚好放得下的那个值)）
-    var ds = Math.min(settings.dateScale, fitScale(DATE_W_REM,            w, size));
-    var ws = Math.min(settings.wxScale,   fitScale(BAR_HALF_REM * 2,      w, size));
+    /* 横向闸门：把用户设的倍数按"屏幕放得下多少"封顶。
+       ⚠️ fitScale 的返回值【可以大于 1】—— 它算的是"最多能到多少倍"，
+          不是"不许超过原样"。封在 1 上的话滑杆往右拖只会白涨读数（v4.32 踩过）。
+       日期栏是单个居中的块 ⇒ 要它自己的全宽；天气栏要按"最宽那一侧 × 2"
+       （中间模块钉在屏幕中轴上）。 */
+    var ds = Math.min(settings.dateScale, fitScale(DATE_W_REM,       w, size));
+    var ws = Math.min(settings.wxScale,   fitScale(BAR_HALF_REM * 2, w, size));
 
     // 上下能走多远
     var slack = (window.innerHeight - FOOTPRINT[settings.style].h * size) / 2;
@@ -2145,9 +2159,16 @@ body.amber .panel .ver { color:#6b5a44; }
       wxV2El.style.transform = tw;
     }
   }
-  /* 一个 rem 宽的块最多能放大到多少倍而不超出屏幕（返回倍数，不是 px）。 */
+  /* 一个 wRem 宽的块【最多能放大到多少倍】而不超出屏幕（返回倍数，不是 px）。
+     ⚠️⚠️ 返回值【可以大于 1】，绝对不能写成 Math.min(1, …) ——
+        那样 "min(用户值, 闸门值)" 就永远不可能超过 1，
+        症状是**滑杆往右拖、读数在涨、实际大小纹丝不动**（v4.32 实测踩到）。
+        闸门的职责是"最多能到多少"，不是"不许超过原样" —— 原样（1×）只是它众多取值之一。
+     溢出保护不靠这里封顶：默认倍率下 min(1, fit) 仍然是 1（fit 远大于 1），
+     而高倍率下 fit < 1，min(1, fit) 仍然是 fit —— 两种情况都和封顶前逐位相同。 */
   function fitScale(wRem, w, size) {
-    return Math.min(1, (w * FIT / wRem) / size);
+    if (!(size > 0)) { return 1; }
+    return (w * FIT / wRem) / size;
   }
   function clampTo(v, lim) {
     if (v >  lim) { return  lim; }
