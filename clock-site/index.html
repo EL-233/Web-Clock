@@ -190,9 +190,9 @@ html, body {
    本文件有过一次实测教训 —— 只改一处会导致时钟位置或缩放上限算错。
 
    ⚠️ v3 的缩放上限【两向都是宽度在卡】，而宽度就是这一栏：
-      横屏 min(宽度项 101, 高度项 111) = 101 → 宽度在卡
-      竖屏 min(宽度项  76, 高度项 148) =  76 → 宽度在卡
-      （按 1024×768 / 768×1024、FOOTPRINT.v3 = w9.80 / h6.73 算的。）
+      横屏 min(宽度项 94, 高度项 111) =  94 → 宽度在卡
+      竖屏 min(宽度项 70, 高度项 148) =  70 → 宽度在卡
+      （按 1024×768 / 768×1024、FOOTPRINT.v3 = w10.61 / h6.73 算的。）
    所以往天气栏【横着加东西】代价很大：加宽 1rem，v3 的上限就掉约 10%。
    竖着加（加一行）不影响上限 —— 只要总高不超过下面 height 那个数，
    那个数只决定时钟在屏幕上的位置。 */
@@ -201,6 +201,11 @@ html, body {
   line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
                           它撑高 v1 的单行版；三模块那套各自带 line-height，不看它 */
   margin-top:1.2rem;
+  /* ⚠️ 必须写死满屏宽（不能让它贴着内容收缩）——
+     三模块那套是靠"左右两格等宽"把中间模块顶到屏幕中轴上的，
+     而等宽只在整行有【确定宽度】时才成立（flex-grow 分配的是剩余空间）。
+     行宽一变，中轴就跟着漂。 */
+  width:100%;
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
   -webkit-justify-content:center; justify-content:center;
@@ -277,30 +282,34 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 .ring-fill  { stroke:#3a3a3a; }   /* 已走部分：只是暗示 */
 .ring-flash { stroke:#3a3a3a; }   /* 满圈淡出那一层，与进度带同色，否则淡出瞬间会看出跳变 */
 
-/* ── v2/v3 的天气栏：一行三模块，等距横排 ──
+/* ── v2/v3 的天气栏：一行三模块，中间那个【正对屏幕中轴】──
 
-     模块一              模块二            模块三
-     阴 26° ↑31°↓24°     1小时后 · 阴26°   体感温度 30°
-                         ☂降雨概率 25%     💧湿度 85%
+     左（贴中）              中（居中）        右（贴中）
+     阴 26° ↑31°↓24°        体感温度 30°      1小时后 · 阴26°
+                            💧湿度 85%        ☂降雨概率 25%
+     ← 吃剩下的空间 →       ← 固定 1.75rem →  ← 吃剩下的空间 →
 
-   ⚠️ 【模块一必须 width:auto】—— 它是"当前温度 + 高低温"横着并排（沿用上一版）。
-      拿定宽去防位移是行不通的：定宽盒子比内容宽就会在两侧留下空白，
-      而空白会把【可见内容】推离屏幕中轴 —— v4.24 用户报的"天气栏整体没居中"
-      就是左栏定宽 4.0rem 造成的（偏 55px）。代价是天气描述长短变化时右边
-      两个模块会跟着挪一点；这个代价用户认过（比整条栏偏在一边好得多）。
-   ⚠️ 反过来，模块二/三【必须定宽】—— 内容是纯数字和短标签，定宽能把位移掐死。
+   ⚠️ 布局的关键是【左右两个外侧模块 flex:1 1 0，宽度永远相等】——
+      于是无论内容多宽，中间那格的中心必定落在整行的中点上，
+      而整行是满屏宽（width:100%），所以中间模块就在屏幕中轴上。用户要的正是这个。
+      （反例：三个都是"贴内容"的定宽盒子时，中间模块会被两侧宽度差推走 ——
+        左模块最宽时能偏出 0.9rem ≈ 60px。）
+   ⚠️ 外侧两格的【内容各自贴向中间】：左边 justify-content:flex-end、
+      右边 align-items:flex-start。这样它们挨着中间模块的那条边是固定的，
+      只有朝外的那条边随内容长短伸缩 —— 中间模块因此一动不动，
+      左右两个可见间隙也永远相等（都是 .wx-c-detail 的 .6rem margin）。
+   ⚠️ 模块一的"当前温度"必须 width:auto。想给它定宽来防位移是行不通的：
+      定宽盒子比内容宽就会在两侧留空白，而空白会把【可见内容】推离中轴 ——
+      v4.24 用户报的"天气栏整体没居中"就是左栏定宽 4.0rem 造成的（偏 55px）。
+      现在它贴向中间那格，右边缘由布局钉死，宽度变化只往外扩。
    ⚠️ 关掉某个模块时只隐藏内容、【位置留着】（见 .wx-cell.off）——
       位置一撤，剩下的模块会重新分摊、整条栏重排，那正是用户最反感的。
    iOS 9 没有 CSS Grid，这里也用不上 —— 只是一行三格。 */
-.wx-v2 {
-  display:-webkit-flex; display:flex;
-  -webkit-align-items:center; align-items:center;
-  -webkit-justify-content:center; justify-content:center;
-}
+.wx-v2,
 .wx-row {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
-  -webkit-justify-content:center; justify-content:center;
+  width:100%;                       /* 满屏宽 —— 中间模块"居中"要靠这个才成立 */
 }
 /* 一个模块。默认横排（模块一 = 当前温度与高低温并排）；模块二/三自己改竖排。
    ⚠️ 居中三个方向都要显式写 —— flex 默认 flex-start，
@@ -318,19 +327,34 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 /* 模块被关掉：隐藏内容但【位置留着】—— 剩下的模块不会重新分摊、整条栏不重排。 */
 .wx-cell.off { visibility:hidden; }
 
-/* 模块二 / 模块三：都是「上下两行」。
-   模块之间的等距间隔 .6rem —— 这是"看得出是三个模块"和"别把 v3 压太狠"的折中：
-   v3 两向都是宽度在卡，间隔每加 .1rem，缩放上限就掉约 1%。
-   ⚠️ 定宽的值按各自最坏一行留 8–15% 余量（括号里是实测占比）：
-        模块二 2.5rem  ← 「雨图标 + 降雨概率 + 100%」≈ 2.13rem（85%）
-        模块三 1.75rem ← 「体感温度 30°」            ≈ 1.62rem（92%）
-      两者都用 nowrap + 居中，真溢出了会对称挤进邻居身上 —— 加内容前先量一遍。 */
-.wx-c-next, .wx-c-detail {
-  -webkit-flex-direction:column; flex-direction:column;
-  margin-left:.6rem;
+/* 外侧两格：flex-basis 给 0 + grow 给 1 → 两格【永远等宽】，中间那格就被顶在中轴上。
+   ⚠️ basis 必须是 0，不能是 auto —— 给 auto 的话基准变成内容宽度，两格又不等宽了。
+   ⚠️ min-width:0 也是必需的：flex 项的 min-width 默认是 auto（= 内容的 min-content），
+      内容一宽就被撑住、两格又不等宽，中间那格就漂了。给 0 之后
+      【两格永远等分剩余空间】→ 中间那格无条件落在中轴上。
+      代价是内容超出格宽时会溢出，但两个方向都是【朝外】溢（下面那两条 packing 决定的），
+      不会被裁、也不会压到中间那格身上；而 FOOTPRINT.v3.w 已按最坏情况保证不溢出屏幕。 */
+.wx-c-main {
+  -webkit-flex:1 1 0; flex:1 1 0;
+  min-width:0;
+  -webkit-justify-content:flex-end; justify-content:flex-end;   /* 内容整体贴向中间那格 */
 }
-.wx-c-next   { width:2.5rem;  }
-.wx-c-detail { width:1.75rem; }
+.wx-c-next {
+  -webkit-flex:1 1 0; flex:1 1 0;
+  min-width:0;
+  -webkit-flex-direction:column; flex-direction:column;
+  -webkit-align-items:flex-start; align-items:flex-start;       /* 竖排容器：贴左 = 贴向中间那格 */
+}
+
+/* 中间那格：固定 1.75rem、两侧各 .6rem 的等距间隔。
+   ⚠️ 这个 .6rem 就是【左右两个可见间隙的全部来源】—— 外侧两格自己不带 margin。
+   ⚠️ 1.75rem 按最坏一行「体感温度 30°」≈ 1.62rem 记账（92%）。 */
+.wx-c-detail {
+  -webkit-flex:0 0 auto; flex:0 0 auto;
+  width:1.75rem;
+  margin:0 .6rem;
+  -webkit-flex-direction:column; flex-direction:column;
+}
 
 /* 模块一里的「当前温度」。
    ⚠️ 宽度 auto —— 见上面那段。它是三格里唯一随天气描述长短变化的，
@@ -361,11 +385,14 @@ body.style-v3 .bar--weather { margin-top:1rem; }
 /* 模块二：未来 1 小时，上下两行。
    ⚠️ 两行合计 2 × .42 = .84rem，这就是天气栏的内容高度 ——
       改行数或行距要同时改 .bar--weather 的 height、v3 的 padding 推导、FOOTPRINT。 */
-/* 两行都是「标签 + 数据」内联排列，各自按内容取宽、整栏居中。
-   ⚠️ 曾经用 space-between + width:100% 让两行撑满整栏，结果是【太宽】——
-      space-between 会把内容推到栏的两端，看着很散。用户要的是"两行等宽"，不是"铺满"。
-      现在的做法：居中 + 第一行的标签后面加一个「·」分隔符，
-      把第一行撑到和第二行差不多宽（两行的左右边缘因此大致对齐）。 */
+/* 右模块的两行：都是「标签 + 数据」内联排列，各自按内容取宽。
+   ⚠️ 整个模块贴向中间那格（.wx-c-next 的 align-items:flex-start），
+      所以这两行的【左边缘对齐】、右边缘随内容略有出入（约 .07rem）。
+      曾经是两行各自居中对齐的，改成贴边之后不能再居中 ——
+      居中会在这个模块和中间那格之间多出一段随内容变化的缝，左右就不对称了。
+   ⚠️ 更早还用过 space-between + width:100% 让两行撑满，结果是【太宽】——
+      space-between 会把内容推到两端，看着很散。别回头。
+      第一行标签后面那个「·」是把第一行撑到和第二行差不多宽用的。 */
 .wx-n2, .wx-n3 {
   display:-webkit-flex; display:flex;
   -webkit-align-items:center; align-items:center;
@@ -1037,19 +1064,23 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
   <!-- 天气两套排布都写在 DOM 里，靠 body.style-v1 切换显示。
        两份都由 JS 填数据，所以切样式时不需要重新请求天气、也不会闪。
-       v2/v3 版 = 一行三模块，等距横排（模块之间 .6rem）：
+       v2/v3 版 = 一行三模块：
 
-         模块一  当前温度 + 高低温（横着并排，紧挨着）
-         模块二  未来一小时（上下两行）
-         模块三  体感温度 / 湿度（上下两行）
+         左：当前温度 + 高低温   中：体感温度 / 湿度   右：一小时后
 
-       ⚠️ 三个模块的顺序就是 WX_MODULES 的顺序，也是设置面板那一行的按钮顺序。 -->
+       ⚠️ 顺序是【当前温度 → 体感湿度 → 一小时】，不是按用户报数的"一二三"。
+          用户要求"体感温度那个模块放中间，且以模块中心居中对齐界面，一小时放最右边"。
+          中间模块能钉在屏幕中轴上，靠的是左右两格 flex-grow 等分剩余空间
+          （见 CSS 里 .wx-c-main / .wx-c-next 那段），所以整行必须是满屏宽的。
+       ⚠️ 三个模块的先后顺序就是 WX_MODULES 的顺序，也是设置面板那一行的按钮顺序。 -->
   <div class="bar bar--weather">
     <div class="wx-v2">
       <div class="wx-row">
-        <!-- ── 模块一：当前温度 + 高低温 ──
-             横排（.wx-cell 默认方向），宽度 auto —— 定宽会在两侧留空白、
-             把可见内容推离屏幕中轴（v4.24 那次偏了 55px 的教训）。 -->
+        <!-- ── 左：当前温度 + 高低温 ──
+             横排（.wx-cell 默认方向），整块【贴向中间那格】（justify-content:flex-end）。
+               · "当前温度"必须 width:auto —— 定宽盒子的空白会把可见内容推离中轴
+                 （v4.24 那次偏了 55px 的教训）；现在它的右边缘被布局钉死，
+                 天气描述变长只往【左】扩，中间那个模块一动不动。 -->
         <div class="wx-cell wx-c-main" id="wx-c-main">
           <span class="wx-main" id="wx-main">-</span>
 
@@ -1068,8 +1099,21 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
           </div>
         </div>
 
-        <!-- ── 模块二：未来一小时 ──
+        <!-- ── 中：体感温度 / 湿度 ──
+             ⚠️ 这一格是【整条天气栏的锚点】：靠左右两格等宽顶在屏幕中轴上。
+                别给它加 margin 之外的东西去挪它。
+             两行都是「标签 + 值」，标签压暗、数据正文色。
+             这两个数据【没有各自请求】：它们和当前温度同在 Open-Meteo 的 current 里
+             （请求多带两个字段，零成本），所以失败路径和别的天气数据完全一致，
+             不会出现"其它模块有数据、这两行空着"的半死状态。 -->
+        <div class="wx-cell wx-c-detail" id="wx-c-detail">
+          <div class="wx-line"><span class="lbl2">体感温度</span><span id="wx-feel"></span></div>
+          <div class="wx-line"><span class="drop"></span><span class="lbl2">湿度</span><span id="wx-hum"></span></div>
+        </div>
+
+        <!-- ── 右：一小时后 ──
              两行：① 「1小时后」+ 该小时的天气与温度   ② [雨图标]「降雨概率」+ 数值
+             整块【贴向中间那格】（align-items:flex-start，因为它是竖排容器）。
              ⚠️ 两行的高度预算 2 × .42 = .84rem 就是天气栏的内容高度 ——
                 改行数或行距必须同步 .bar--weather 的 height、v3 的 padding 推导、FOOTPRINT。
              两行【字号一致】（都跟随 .wx-cell 的 .26rem），靠【颜色】区分标签与数据：
@@ -1082,16 +1126,6 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
           <div class="wx-n3">
             <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
           </div>
-        </div>
-
-        <!-- ── 模块三：体感温度 / 湿度 ──
-             同样是「标签 + 值」两行，标签压暗、数据正文色（与模块二同一套写法）。
-             这两个数据【没有各自请求】：它们和当前温度同在 Open-Meteo 的 current 里
-             （请求多带两个字段，零成本），所以失败路径和别的天气数据完全一致，
-             不会出现"其它模块有数据、这两行空着"的半死状态。 -->
-        <div class="wx-cell wx-c-detail" id="wx-c-detail">
-          <div class="wx-line"><span class="lbl2">体感温度</span><span id="wx-feel"></span></div>
-          <div class="wx-line"><span class="drop"></span><span class="lbl2">湿度</span><span id="wx-hum"></span></div>
         </div>
       </div>
     </div>
@@ -1217,8 +1251,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       <span class="lbl">模块</span>
       <span class="seg seg--multi" data-k="wxShow">
         <button type="button" data-v="main">当前</button>
-        <button type="button" data-v="next">1小时后</button>
         <button type="button" data-v="detail">体感湿度</button>
+        <button type="button" data-v="next">1小时后</button>
       </span>
     </div>
     <!-- 位置 = 经纬度。⚠️ 默认【空】—— 坐标是隐私，仓库是公开的，
@@ -1361,14 +1395,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   };
 
   var dateEl  = document.getElementById('date');
-  var wxMain  = document.getElementById('wx-main');   // 模块一：描述 + 当前温度
-  var wxHi    = document.getElementById('wx-hi');     // 模块一：最高温
-  var wxLo    = document.getElementById('wx-lo');     // 模块一：最低温
+  var wxMain  = document.getElementById('wx-main');   // 左模块：描述 + 当前温度
+  var wxHi    = document.getElementById('wx-hi');     // 左模块：最高温
+  var wxLo    = document.getElementById('wx-lo');     // 左模块：最低温
   var wxV1    = document.getElementById('wx-v1');     // v1 单行版（不参与三模块）
-  var wxNextW = document.getElementById('wx-next-w'); // 模块二 上行：未来 1 小时的天气
-  var wxNextP = document.getElementById('wx-next-p'); // 模块二 下行：那一小时的降雨概率
-  var wxFeel  = document.getElementById('wx-feel');   // 模块三 上行：体感温度
-  var wxHum   = document.getElementById('wx-hum');    // 模块三 下行：相对湿度
+  var wxFeel  = document.getElementById('wx-feel');   // 中模块 上行：体感温度
+  var wxHum   = document.getElementById('wx-hum');    // 中模块 下行：相对湿度
+  var wxNextW = document.getElementById('wx-next-w'); // 右模块 上行：未来 1 小时的天气
+  var wxNextP = document.getElementById('wx-next-p'); // 右模块 下行：那一小时的降雨概率
   var ampmEl  = document.getElementById('ampm');
   var gearEl  = document.getElementById('gear');
   var panelEl = document.getElementById('panel');
@@ -1403,11 +1437,13 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
                     wxShow: { main:true, next:true, detail:true },
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
-  /* wxShow 的键，按【天气栏里从左到右】的顺序排。
+  /* wxShow 的键，按【天气栏里从左到右】的顺序排 —— 注意是 detail 在中间。
      ⚠️ 三处必须同步：这里、HTML 里三个 .wx-cell 的 id（wx-c-<键>）、
         设置面板那行的按钮 data-v（脚本会核这三者完全一致）。
-     载入校验和 syncSegs 都遍历它 —— 新增模块只要往这三处各加一条。 */
-  var WX_MODULES = ['main', 'next', 'detail'];
+     载入校验和 syncSegs 都遍历它 —— 新增模块只要往这三处各加一条。
+     ⚠️ 这个数组只管【顺序】，键名是有语义的（main / next / detail），
+        所以换布局只动顺序，别改键名 —— 改了旧存档里的开关就失效了。 */
+  var WX_MODULES = ['main', 'detail', 'next'];
 
   /* 大小调节的范围。100% = 现有观感，一点不变。 */
   var SIZE_MIN = 0.70, SIZE_MAX = 1.50, SIZE_STEP = 0.05;
@@ -1751,12 +1787,23 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   var FOOTPRINT = {
     v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
     v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
-    v3: { w: 9.80, h: 6.73 }     // 宽度由【天气栏】决定 = 三个模块最坏之和：
-  };                             //   模块一 3.44+.16+.75 + .6 + 模块二 2.5 + .6 + 模块三 1.75 = 9.80rem
-                                 //   ⚠️ 9.80 > v3 卡组自身的 8.44rem，所以 v3【两向都是这一栏在卡宽度】。
-                                 //      三模块横排把这一项从 7.75 顶到 9.80，v3 的缩放上限因此
-                                 //      横屏 129%→118%、竖屏 145%→115%（100% 时不受影响）。
-                                 //      再往天气栏横着加东西，代价就是这个 —— 先看 .bar--weather 那段。
+    v3: { w: 10.61, h: 6.73 }    // 宽度由【天气栏】决定。中间模块钉在屏幕中轴上，
+  };                             //   所以这一项【不是内容总宽，是最大那一侧的 2 倍】：
+                                 //     单侧 = 左内容 3.83 + 间隔 .6 + 中格一半 .875 = 5.305（取较大的一侧）
+                                 //     总计 = 2 × 5.305 = 10.61rem
+                                 //   左内容 = 当前温度 2.95 + .16 + 高低温 .72 = 3.83rem。
+                                 //   ⚠️ 记账口径变了：以前左模块算 3.44+.16+.75 = 4.35（按 0.6em 的数字宽、
+                                 //      富余 18%）。中轴居中要求两侧对称，这一项直接翻倍，18% 的富余会
+                                 //      把上限压到 100% 以下（11.65rem × 66px > 屏宽 768）—— 不能接受。
+                                 //      所以改成按【真实字体度量 + 约 6% 富余】记账：
+                                 //        「晴间多云 26°」= 4 汉字(1em) + 空格(.26) + 3 数字(.55) + °(.4)
+                                 //        = 6.34em × .44rem ≈ 2.79 → 记账 2.95
+                                 //        「↑-31°」= 图标 .10 + 缝 .08 + 3 字符(.55×2+.4)em×.26 ≈ .68 → 记账 .72
+                                 //      ⚠️ 这一项对值很敏感（每加 .1rem，v3 上限掉约 1%），
+                                 //         改上面任何一个字号/图标尺寸都要重算，别照抄。
+                                 //   ⚠️ 10.61 > v3 卡组自身的 8.44rem，所以 v3【两向都是这一栏在卡宽度】。
+                                 //      7.75 → 10.61，上限因此横屏 129%→109%、竖屏 145%→106%
+                                 //      （100% 时不受影响：10.61 × 66px = 701px，屏宽 768）。
                                  //   高度 .83+1+2.88+1+1.02 = 6.73（padding-top 归零，与 v4.28 相同）
   var FIT = 0.97;                // 内容最多占屏幕的 97%，四周留边距（原 0.94 = 6%，收到 3%）
 
@@ -1772,13 +1819,14 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
        各样式能到的实际倍率【由夹取决定，不是由 SIZE_MAX 决定】——
        把滑杆推到 150% 也不会真的更大，先被这里挡住。
        当前值（横屏 / 竖屏，按 1024×768 算）：v1 约 128% / 128%，v2 约 129% / 130%，
-                                              v3 约 118% / 115%。
+                                              v3 约 109% / 106%。
        其中 v2 横屏、v3 横屏都是【宽度】在卡（v3 两向都是），其余也是宽度。
        ⚠️ 这几个数是【算出来的】，不是量出来的：先按上面的 k/kh 得到 100% 时的根字号，
           再用 ceil = min(w×FIT/fp.w, h×FIT/fp.h) 除以它。改了 FOOTPRINT 就要重算，
           别照抄旧值（这段曾经长期挂着与 FOOTPRINT 对不上的旧数字）。
-       ⚠️ v3 的上限现在【完全由天气栏的宽度决定】—— 三模块横排把它顶到 9.80rem 之后，
-          横屏也从"高度在卡"翻成了"宽度在卡"。往天气栏横着加东西，先重算这个数。
+       ⚠️ v3 的上限现在【完全由天气栏的宽度决定】，而天气栏的宽度又被"中间模块居中"
+          这条要求放大了一倍（要居中就得两侧对称，得按最宽的那一侧乘 2 记账）。
+          往天气栏横着加东西、或者把中间那格加宽，都要先重算这个数。
        ⚠️ 这是【刻意】的，不是倍率失灵。夹取放在 layout() 而不是放进步进器的
           可选范围里，是因为上限随【横竖屏】变化（竖屏更宽裕），
           而倍率是全局设置 —— 放步进器里一旋转就被绕过去了。 */
@@ -1894,11 +1942,17 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
      SVG 元素上的 CSS 动画在 Safari 9 上没把握，而这里本来就有逐帧循环可用。 */
   var FLASH_MS = 650;      // 满圈淡出的时长
 
-  var COLON_MIN = 0.20;    // 冒号最暗时的透明度。它身兼两职：
+  var COLON_MIN = 0.40;    // 冒号最暗时的透明度。它身兼两职：
                          //   · 呼吸时暗相的下限
                          //   · 【关闭冒号时】的固定显示值 —— 用户要的"非完全关闭"：
                          //     关掉后不是消失，而是停在最暗那一档，保留分隔的暗示。
                          //   所以这个值不能设成 0，否则"关闭"和"隐藏"就没区别了。
+                         //
+                         // ⚠️ 两个身份是【同一个数】，这是用户定的（"取闪烁时候的最低值"）——
+                         //    所以调它会同时改变呼吸的深浅：0.20 → 0.40 之后，
+                         //    暗相从 #1d1d1d 提到 #3a3a3a，呼吸的对比度也跟着变浅。
+                         //    如果只想让"关闭"这一档更亮、呼吸保持原样，
+                         //    得把这个数拆成两个（呼吸下限 / 关闭值），现在没有拆。
 
   /* 冒号呼吸的包络：一秒一个周期，返回 0..1。
      刻意【不用正弦】—— 正弦在高低两端一路平滑，人眼分不出"亮"与"灭"是两个状态。
