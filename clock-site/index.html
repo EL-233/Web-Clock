@@ -1149,7 +1149,7 @@ body.amber .panel .ver { color:#6b5a44; }
           中间模块能钉在屏幕中轴上，靠的是左右两格 flex-grow 等分剩余空间
           （见 CSS 里 .wx-c-main / .wx-c-next 那段），所以整行必须是满屏宽的。
        ⚠️ 三个模块的先后顺序就是 WX_MODULES 的顺序，也是设置面板那一行的按钮顺序。 -->
-  <div class="bar bar--weather">
+  <div class="bar bar--weather" id="wx-bar">
     <div class="wx-v2" id="wx-v2">
       <div class="wx-row">
         <!-- ── 左：当前温度 + 高低温 ──
@@ -1348,22 +1348,23 @@ body.amber .panel .ver { color:#6b5a44; }
   </div>
 
   <!-- ── 版面 ──
-       日期栏与天气栏各自的「大小」与「上下位置」。四个值【三套样式共用一套】
-       （不像「外观」页的「大小」那样按样式各记）。
+       日期栏与天气栏各自的「大小」与「上下位置」。
+       ⚠️ 这四个值【三套样式各记一套】（和「外观」页那个「大小」一样）——
+          三条竖排的布局完全不同、余量差 4 倍，共用一套必然有一边不合适。
+          所以切样式时这四根滑杆会跟着换值，调的是【当前样式】那一套。
 
        ⚠️ 标签一律 4 个字，别写「日期上下位置」——
           `.row` 是固定 38px 高，标签一折行就会糊到下一行上（已给 .lbl 加 nowrap 兜底）。
        ⚠️ 每个滑杆都要【显式写 min/max/step】：JS 里读 el.min/el.max/el.step 时，
           HTML 里没写就是空字符串、不是浏览器内部的默认值。
        ⚠️ 位置的正负：【正 = 向下】。读数用 ASCII 减号（见 JS 里 modYLabel 的注释）。
-       ⚠️ 这四根滑杆不走「大小」那个步进器 —— 拖动比连点加减号直观得多，
-          而且它们本来就是连续量。
 
-       ⚠️ 范围【故意比实际能走的更宽】（大小 0.5~2.0、位置 ±3rem）：
-          真正能到哪由屏幕余量 / 溢出闸门自动封顶，三套样式共用这一组范围。
-          所以读数会显示你设的值，实际位置自己收着 —— 和「外观」页那个
-          「大小」步进器一个路子（设 150% 可能只兑现到 122%）。
-          真按"实际能走的量"去设范围的话，三套样式要各配一套，太碎。 -->
+       ⚠️ 「位置」那两根的 min/max 写在这里只是【占位】——
+          真正的量程由 layout() 按实测余量动态写进去（见 setRangeBounds）：
+          往上能走多少、往下能走多少各算各的，所以 min 和 max 通常不对称，
+          而且"拖到两头"就是真正能到的极限，读数不撒谎。
+       ⚠️ 「大小」那两根的量程是固定的 0.5~2.0，靠溢出闸门封顶 ——
+          和「外观」页的「大小」步进器一个路子（设 150% 可能只兑现到 122%）。 -->
   <div class="page" data-page="layout">
     <div class="row" data-k="dateScale">
       <span class="lbl">日期大小</span>
@@ -1411,7 +1412,7 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️⚠️ 【每改一版都要改这一个字符串】，否则面板上显示的和 `版本记录.md` 会对不上。
          只此一处，不要在别处再写死版本号。
          每次定版时与 版本记录.md 的新小节标题、以及备份 zip 的文件名保持一致。 */
-  var APP_VER = 'v4.33';
+  var APP_VER = 'v4.34';
 
   // 天气刷新间隔：10 分钟。
   // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
@@ -1535,7 +1536,8 @@ body.amber .panel .ver { color:#6b5a44; }
   var wxMain  = document.getElementById('wx-main');   // 左模块：描述 + 当前温度
   var wxHi    = document.getElementById('wx-hi');     // 左模块：最高温
   var wxLo    = document.getElementById('wx-lo');     // 左模块：最低温
-  var wxV2El  = document.getElementById('wx-v2');     // 三模块那套的外壳：layout() 会给它写 scale()
+  var wxV2El  = document.getElementById('wx-v2');     // 三模块那套的外壳：layout() 会给它写 transform
+  var wxBarEl = document.getElementById('wx-bar');    // 天气栏的【盒子】（layout() 量它的布局位置用）
   var wxFeel  = document.getElementById('wx-feel');   // 中模块 上行：体感温度
   var wxHum   = document.getElementById('wx-hum');    // 中模块 下行：相对湿度
   var wxNextW = document.getElementById('wx-next-w'); // 右模块 上行：未来 1 小时的天气
@@ -1572,12 +1574,14 @@ body.amber .panel .ver { color:#6b5a44; }
                     // 别的设置都是"从一组里选一个"，这个每个键各管各的。
                     // 默认【三个全开】。
                     wxShow: { main:true, next:true, detail:true },
-                    // 日期栏 / 天气栏【自己】的大小与上下位置。
-                    // ⚠️ 三套样式【共用一套】，和下面的 sizeMul 不同（那个是按样式分键的）——
-                    //    它们描述的是"我要这两栏多大、在哪"，与卡片样式无关。
-                    // 位置单位是 rem，【正 = 向下】；大小 1 = 原样。
-                    dateScale: 1, dateY: 0,
-                    wxScale:   1, wxY:  0,
+                    // 日期栏 / 天气栏【各自】的大小与上下位置。
+                    // ⚠️ 三套样式【各记一套】（形状与 sizeMul 一致）——
+                    //    三条竖排的布局完全不同，能挪的余量差好几倍
+                    //    （v3 竖屏 ±4.4rem，v1 横屏只有 ±1.9rem），
+                    //    共用一套必然在某一套里要么不够用、要么大半行程是死的。
+                    // 位置单位 rem，【正 = 向下】；大小 1 = 原样。
+                    dateScale: { v1:1, v2:1, v3:1 }, dateY: { v1:0, v2:0, v3:0 },
+                    wxScale:   { v1:1, v2:1, v3:1 }, wxY:   { v1:0, v2:0, v3:0 },
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* wxShow 的键，按【天气栏里从左到右】的顺序排 —— 注意是 detail 在中间。
@@ -1598,19 +1602,28 @@ body.amber .panel .ver { color:#6b5a44; }
     return Math.round(v * 100) / 100;     // 消掉浮点累加误差，否则会出来 0.9500000001
   }
 
-  /* ── 日期栏 / 天气栏自己的「大小」与「上下位置」 ──
-     ⚠️ 这两组值是【三套样式共用一套】，不像 sizeMul 那样按样式分键 ——
-        它们描述的是"我要这两栏多大、在哪"，与卡片样式无关。
-     位置的正负：【正 = 向下】，与 CSS 的 translateY 同向。
+  /* ── 日期栏 / 天气栏的「大小」与「上下位置」──
+     ⚠️ 三套样式【各记一套】（形状同 sizeMul）。三条竖排布局不同、余量差 4 倍，
+        共用一套必然有一边不合适。
+     ⚠️ 位置的正负：【正 = 向下】，与 CSS 的 translateY 同向。
 
-     ⚠️ 滑杆的取值范围【故意给得比实际能走的更宽】——
-        真正能到哪由【屏幕余量 / 溢出闸门】自动封顶（见 applyModTransforms），
-        和「外观」页那个「大小」步进器一个路子：设的是"想要多少"，
-        能兑现多少由几何说了算。所以读数会显示你设的值，实际位置自己收着。
-        这样三套样式（余量差三倍）共用一组滑杆范围，不用各配一套。
-        位置 ±3rem 是量出来的：余量最紧的 v1 横屏约 ±1.4rem、最松的 v3 竖屏约 ±3.4rem。 */
+     ⚠️ 「位置」滑杆的量程【不是这里定的】—— 它由 layout() 实测两根栏的布局位置后
+        动态写进 min/max（见 setRangeBounds），所以拖到两头就是真正能到的极限、
+        读数不撒谎，而且上下两个方向可以不一样长。
+        下面那个 MOD_Y_MAX 只是【存档校验】用的兜底上界，与滑杆量程无关；
+        它必须 ≥ 任何可能出现的真实余量（最松的 v1 竖屏在 70% 倍率下约 ±10rem），
+        否则用户存下来的合法值会在下次读取时被误判成脏值。 */
   var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 2.00;
-  var MOD_Y_MAX = 3.00;
+  var MOD_Y_MAX = 10.00;
+
+  /* 样式键。凡是"按样式分键"的设置（sizeMul、这四个）都遍历它。 */
+  var STYLES = ['v1', 'v2', 'v3'];
+
+  /* 两根栏当前的可行程（px），由 layout() 里 measureBarLimits() 填。
+     ⚠️ 两根栏【各有一份】，所以一栏放大/移动不会牵动另一栏 ——
+        早先把它们共用一个"余量池"，结果日期一放大天气的位置就被挤掉。 */
+  var modLim = { dateUp: 0, dateDown: 0, dateH: 1,
+                 wxUp:   0, wxDown:   0, wxH:   1 };
 
   function clampModScale(v) {
     if (typeof v !== 'number' || isNaN(v)) { return 1; }
@@ -1731,12 +1744,25 @@ body.amber .panel .ver { color:#6b5a44; }
         settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
         settings.sizeMul.v3 = clampMul(o.sizeMul.v3);
       }
-      // 日期/天气的大小与位置：clamp 自己会把脏值/缺失退回默认（1 / 0）。
-      // ⚠️ 必须逐个过 clamp —— 它们会直接被拼进 transform，脏数据会静默把版面搞坏。
-      settings.dateScale = clampModScale(o.dateScale);
-      settings.dateY     = clampModY(o.dateY);
-      settings.wxScale   = clampModScale(o.wxScale);
-      settings.wxY       = clampModY(o.wxY);
+      /* 日期/天气的大小与位置：三套样式各记一套，逐样式逐键 clamp。
+         ⚠️ 必须逐个过 clamp —— 它们会直接被拼进 transform，脏数据会静默把版面搞坏。
+         ⚠️ 旧存档迁移：v4.33 及以前把它们存成四个【全局标量】。
+            新格式是对象，所以 `typeof o.dateScale === 'object'` 才算新格式；
+            是数字就说明是旧存档，把它摊到三套样式上当起点，
+            免得用户当时调好的值被静默丢掉。 */
+      var MOD_FIELDS = [['dateScale', clampModScale], ['dateY', clampModY],
+                        ['wxScale',   clampModScale], ['wxY',   clampModY]];
+      for (var mfi = 0; mfi < MOD_FIELDS.length; mfi++) {
+        var mKey = MOD_FIELDS[mfi][0], mClamp = MOD_FIELDS[mfi][1];
+        var mSrc = o[mKey];
+        var mLegacy = (typeof mSrc === 'number') ? mSrc : null;
+        var mObj = (mSrc && typeof mSrc === 'object') ? mSrc : null;
+        for (var msi = 0; msi < STYLES.length; msi++) {
+          var mSty = STYLES[msi];
+          var mRaw = mObj ? mObj[mSty] : mLegacy;
+          settings[mKey][mSty] = mClamp(mRaw);   // 脏值/缺失由 clamp 退回默认
+        }
+      }
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
 
@@ -1839,12 +1865,15 @@ body.amber .panel .ver { color:#6b5a44; }
     var el2 = document.getElementById('ring-ms-val');
     if (el2) { setText(el2, ringLabel(ms)); }
 
-    // 版面那四根。⚠️ 这里写 el.value 是安全的（整刷路径，不是在拖动中）——
+    // 版面那四根。⚠️ 取的是【当前样式】那一套 —— 换样式时这四根要跟着换值，
+    //    和上面「大小」显示当前样式的倍率是同一个道理，所以必须在这里刷。
+    // ⚠️ 这里写 el.value 是安全的（整刷路径，不是在拖动中）——
     //    拖动中写字会和手指抢滑杆，那条规则只约束滑杆自己的 handler（见 bindMod）。
-    syncModControl('date-scale', settings.dateScale, true);
-    syncModControl('wx-scale',   settings.wxScale,   true);
-    syncModControl('date-y',     settings.dateY,     false);
-    syncModControl('wx-y',       settings.wxY,       false);
+    var mst = settings.style;
+    syncModControl('date-scale', settings.dateScale[mst], true);
+    syncModControl('wx-scale',   settings.wxScale[mst],   true);
+    syncModControl('date-y',     settings.dateY[mst],     false);
+    syncModControl('wx-y',       settings.wxY[mst],       false);
 
     // 位置：正在编辑时【不回写】，否则会把用户打到一半的字覆盖掉
     var gi = document.getElementById('geo-in');
@@ -2103,6 +2132,11 @@ body.amber .panel .ver { color:#6b5a44; }
        ⚠️ 副作用：最大倍率下天气栏的可见内容比它的盒子小，栏底会多出一点视觉留白。
           这是预期的，不用去"修"。 */
     curSize = size;
+    /* ⚠️ 必须【先量后写】—— measureBarLimits() 读 offsetTop/offsetHeight，
+       读之前得让浏览器按新根字号重排过。这里是同步读，浏览器会立刻重排一次，
+       拿到的值是准的；代价是这一次强制重排 —— 只在 layout() 里付，
+       滑杆拖动走缓存，一分钱不花。 */
+    measureBarLimits();
     applyModTransforms(size);
   }
 
@@ -2125,39 +2159,101 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️ 上下位置在这里【按屏幕余量夹取】，而不是并进 layout() 的 ceil：
         并进 ceil 的话每次拖动都要重算根字号 → 整页重排 → A5 上必掉帧。
         夹取的余量 = 组上下各剩多少，再扣掉缩放自己往外扩的那部分。 */
+  /* 量两根栏各自的【布局位置】，算出它们各能往上／往下走多远（px）。
+     ⚠️ 用 offsetTop / offsetHeight，【绝不用 getBoundingClientRect】——
+        后者返回的是【变换之后】的矩形，一缩放就变成"自己量自己"，成环。
+        offsetTop / offsetHeight 是纯布局量，不受 transform 影响。
+     ⚠️ 只在 layout() 里调用。layout() 本来就要写根字号、必然重排一次，
+        顺手量一下是搭便车；而滑杆拖动【绝不】走这里 —— 那会变成逐帧强制重排。
+     ⚠️ 两根栏【各算各的】，这是"互不牵制"的关键：
+        日期放大只改变日期自己的余量，天气那边一个数都不动。 */
+  function measureBarLimits() {
+    var H = window.innerHeight;
+    if (dateEl) {
+      modLim.dateH    = dateEl.offsetHeight;
+      modLim.dateUp   = dateEl.offsetTop;                       // 往上顶到屏幕顶
+      modLim.dateDown = H - (dateEl.offsetTop + dateEl.offsetHeight);  // 往下到屏幕底
+    }
+    if (wxBarEl) {
+      modLim.wxH    = wxBarEl.offsetHeight;
+      modLim.wxUp   = wxBarEl.offsetTop;
+      modLim.wxDown = H - (wxBarEl.offsetTop + wxBarEl.offsetHeight);
+    }
+  }
+
+  /* 把「大小」与「上下位置」落到 transform。
+     ⚠️ 挂载点只有两处：layout() 末尾、以及那四个滑杆的 handler
+        （它们传缓存的 curSize）。**绝不走 applySettings()** ——
+        那会重跑 initRing/tick，而且拖动时逐帧跑不起。
+
+     transform 在这里有三条关键性质：
+       ① 【不参与布局】⇒ 时钟不会被推走、FOOTPRINT 一个数都不用动、
+          夹取不用重算 ⇒ 这条路径零重排，拖动才能跟手。
+       ② 写法 `translateY(..) scale(..)`：变换从右往左作用，所以是
+          "先以自身中心缩放、再整体平移【未缩放的】Y 像素"。
+          ⚠️ 顺序写反（`scale(..) translateY(..)`）的话平移量会被缩放吃掉 ——
+             症状是"拖大小滑杆时位置也跟着变"，两根滑杆不再独立，很难查。
+       ③ 缩放以自身中心为原点 ⇒ 上下左右对称外扩。日期栏因此会横向变宽，
+          所以要跟天气栏一样加【横向闸门】（见下）。
+
+     ⚠️ 上下限是【每根栏、每个方向各自算的】（measureBarLimits 量出来的布局位置），
+        不再共用一个"余量池" —— 共用的话改 A 的大小或位置会把 B 的位置挤掉，
+        也就是上一个版本被用户抓到的"互相牵制"。 */
   function applyModTransforms(size) {
     if (!(size > 0)) { return; }
-    var w = window.innerWidth;
-    var isV1 = (settings.style === 'v1');
+    var w  = window.innerWidth;
+    var st = settings.style;
 
     /* 横向闸门：把用户设的倍数按"屏幕放得下多少"封顶。
        ⚠️ fitScale 的返回值【可以大于 1】—— 它算的是"最多能到多少倍"，
           不是"不许超过原样"。封在 1 上的话滑杆往右拖只会白涨读数（v4.32 踩过）。
        日期栏是单个居中的块 ⇒ 要它自己的全宽；天气栏要按"最宽那一侧 × 2"
        （中间模块钉在屏幕中轴上）。 */
-    var ds = Math.min(settings.dateScale, fitScale(DATE_W_REM,       w, size));
-    var ws = Math.min(settings.wxScale,   fitScale(BAR_HALF_REM * 2, w, size));
+    var ds = Math.min(settings.dateScale[st], fitScale(DATE_W_REM,       w, size));
+    var ws = Math.min(settings.wxScale[st],   fitScale(BAR_HALF_REM * 2, w, size));
 
-    // 上下能走多远
-    var slack = (window.innerHeight - FOOTPRINT[settings.style].h * size) / 2;
-    slack -= Math.max(0, ds - 1) * (isV1 ? 1.4 : 0.83) * size / 2;   // 日期栏的盒高
-    slack -= Math.max(0, ws - 1) * 1.02 * size / 2;                  // 天气栏的盒高
-    if (slack < 0) { slack = 0; }
-    var dY = clampTo(settings.dateY * size, slack);
-    var wY = clampTo(settings.wxY   * size, slack);
+    // 各自的上下限：屏幕边缘，再扣掉【自己】缩放往外扩的那部分（不影响对方）
+    var dEx = Math.max(0, ds - 1) * modLim.dateH / 2;
+    var wEx = Math.max(0, ws - 1) * modLim.wxH   / 2;
+    var dLim = { up: modLim.dateUp - dEx, down: modLim.dateDown - dEx };
+    var wLim = { up: modLim.wxUp   - wEx, down: modLim.wxDown   - wEx };
 
-    // ⚠️ 全默认（缩放 1、位置 0）时写空串、不写 transform ——
-    //    保持"默认观感逐位不变"，也免得平白多出层叠上下文与包含块。
-    if (dateEl) {
-      var td = (ds === 1 && dY === 0) ? '' : ('translateY(' + dY + 'px) scale(' + ds + ')');
-      dateEl.style.webkitTransform = td;
-      dateEl.style.transform = td;
-    }
-    if (wxV2El) {
-      var tw = (ws === 1 && wY === 0) ? '' : ('translateY(' + wY + 'px) scale(' + ws + ')');
-      wxV2El.style.webkitTransform = tw;   // iOS 9 不写前缀也认，两份都写只是保险
-      wxV2El.style.transform = tw;
-    }
+    writeMod(dateEl, ds, clampDir(settings.dateY[st] * size, dLim));
+    writeMod(wxV2El, ws, clampDir(settings.wxY[st]   * size, wLim));
+
+    /* 位置滑杆的量程 = 这根栏【真正能走到的极限】。
+       于是"拖到最左/最右"就是极限，读数不撒谎；而且上下两段可以不一样长
+       （日期往上只有一点余量、往下几乎能到屏幕底）。
+       量程随屏幕余量走，所以换样式/旋转/缩放后会自动更新。 */
+    setRangeBounds(document.getElementById('date-y'), dLim, size);
+    setRangeBounds(document.getElementById('wx-y'),   wLim, size);
+  }
+
+  /* 写一个栏的 transform。⚠️ 全默认（缩放 1、位置 0）时写空串、不写 transform ——
+     保持"默认观感逐位不变"，也免得平白多出层叠上下文与包含块。 */
+  function writeMod(el, s, y) {
+    if (!el) { return; }
+    var t = (s === 1 && y === 0) ? '' : ('translateY(' + y + 'px) scale(' + s + ')');
+    el.style.webkitTransform = t;   // iOS 9 不写前缀也认，两份都写只是保险
+    el.style.transform = t;
+  }
+  /* 按方向夹取。v 正 = 向下；lim.up / lim.down 都是【正数】（各能走多少 px）。 */
+  function clampDir(v, lim) {
+    var up = Math.max(0, lim.up), down = Math.max(0, lim.down);
+    if (v < -up)   { return -up;   }
+    if (v >  down) { return  down; }
+    return v;
+  }
+  /* 把一根位置滑杆的 min/max 写成本次算出的极限（单位 rem，归到 0.05 网格）。
+     ⚠️ 只在值真的变了才写 —— 这个函数在拖动中也会被调到，
+        每次都写会把滑杆的 DOM 属性搅一遍（白费，而且可能和手指抢）。 */
+  function setRangeBounds(el, lim, size) {
+    if (!el || !(size > 0)) { return; }
+    var mn = -Math.round(Math.max(0, lim.up)   / size * 20) / 20;
+    var mx =  Math.round(Math.max(0, lim.down) / size * 20) / 20;
+    if (mx - mn < 0.1) { mn = -0.05; mx = 0.05; }   // 极端情况别让滑杆退化成一个点
+    if (parseFloat(el.min) !== mn) { el.min = mn; }
+    if (parseFloat(el.max) !== mx) { el.max = mx; }
   }
   /* 一个 wRem 宽的块【最多能放大到多少倍】而不超出屏幕（返回倍数，不是 px）。
      ⚠️⚠️ 返回值【可以大于 1】，绝对不能写成 Math.min(1, …) ——
@@ -2169,11 +2265,6 @@ body.amber .panel .ver { color:#6b5a44; }
   function fitScale(wRem, w, size) {
     if (!(size > 0)) { return 1; }
     return (w * FIT / wRem) / size;
-  }
-  function clampTo(v, lim) {
-    if (v >  lim) { return  lim; }
-    if (v < -lim) { return -lim; }
-    return v;
   }
 
   /* 把文字写进某个半片。结构固定为 <div class="half"><span>字</span></div>，
@@ -2989,13 +3080,21 @@ body.amber .panel .ver { color:#6b5a44; }
     var fbDragging  = false;
     var fbTimer     = null;
 
-    /* ⚠️ range 的 min/max/step 是【反射给 JS 看的字符串】，HTML 里没写就是 ""
-       —— 不是浏览器内部的默认 0/100/1。不兜底的话 parseFloat("") = NaN，
-       一路算下去会把 NaN 写进值里（transform 变成 translateY(NaNpx)，静默失效）。 */
-    var mn = parseFloat(el.min), mx = parseFloat(el.max), sp = parseFloat(el.step);
-    if (isNaN(mn)) { mn = 0; }
-    if (isNaN(mx)) { mx = 100; }
-    if (isNaN(sp) || sp <= 0) { sp = 1; }
+    /* 取滑杆的 min/max/step。
+       ⚠️ 必须【每次现读】，不能在绑定时缓存 —— 「位置」那两根的量程是
+          layout() 按屏幕余量动态写进去的（见 setRangeBounds），
+          缓存下来滑杆会一直停在旧量程上。
+       ⚠️ range 的 min/max/step 是【反射给 JS 看的字符串】，HTML 里没写就是 ""
+          —— 不是浏览器内部的默认 0/100/1。不兜底的话 parseFloat("") = NaN，
+          一路算下去会把 NaN 写进值里（transform 变成 translateY(NaNpx)，静默失效）。 */
+    function bounds() {
+      var a = parseFloat(el.min), b = parseFloat(el.max), c = parseFloat(el.step);
+      if (isNaN(a)) { a = 0; }
+      if (isNaN(b)) { b = 100; }
+      if (isNaN(c) || c <= 0) { c = 1; }
+      if (b <= a) { b = a + 1; }
+      return [a, b, c];
+    }
 
     /* 两条路（原生 / 兜底）都从这里进 —— 殊途同归，不各写各的。 */
     function commit(persist) {
@@ -3013,6 +3112,7 @@ body.amber .panel .ver { color:#6b5a44; }
           min + round(...)×step 会算出 1.1e-16 这种数，写进设置再进 transform
           就是 translateY(8e-15px)，还会一路污染 localStorage。 */
     function valueFromX(clientX) {
+      var bd = bounds(), mn = bd[0], mx = bd[1], sp = bd[2];
       var r = el.getBoundingClientRect();
       var span = r.width - THUMB_PX;
       if (span <= 0) { return mn; }   // ⚠️ 返回 mn，不要照抄某根滑杆的常量
@@ -3114,11 +3214,12 @@ body.amber .panel .ver { color:#6b5a44; }
   function bindMod(id, key, isScale) {
     var el = document.getElementById(id);
     bindRange(el, function (persist) {
-      settings[key] = isScale ? clampModScale(parseFloat(el.value))
-                              : clampModY(parseFloat(el.value));
+      var st = settings.style;      // ⚠️ 改的是【当前样式】那一套，不是全局的
+      settings[key][st] = isScale ? clampModScale(parseFloat(el.value))
+                                  : clampModY(parseFloat(el.value));
       if (persist) { saveSettings(); }
       var rv = document.getElementById(id + '-val');
-      if (rv) { setText(rv, isScale ? modScaleLabel(settings[key]) : modYLabel(settings[key])); }
+      if (rv) { setText(rv, isScale ? modScaleLabel(settings[key][st]) : modYLabel(settings[key][st])); }
       applyModTransforms(curSize);
     });
   }
