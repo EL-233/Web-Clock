@@ -31,7 +31,7 @@
     · visibilitychange 在 iOS 9 上要带 webkit 前缀，代码里做了特性检测。
     · 两套样式的基础值直接按 v2 写死（**不挂在 body.style-v2 上**），
       这样万一 JS 挂了、body 上没加类，页面仍按 v2 正常渲染。
-    · 天气两套排布都在 DOM 里、都填数据，切样式只是切显示 —— 不重新请求、不闪。
+    · 天气栏三套样式共用同一套 DOM（v4.32 起；此前 v1 另有一套单行版）。
     · 走秒带（v3 样式）用 SVG 的 stroke-dasharray/dashoffset 做，路径显式写成
       从【顶部中点】出发顺时针绕一圈 —— 不用 <rect>，因为 rect 的虚线起点固定在
       左上角，想挪到顶部中点得靠 dashoffset 反补，符号容易搞反且没法离线验证。
@@ -183,6 +183,10 @@ html, body {
   height:.83rem;
   line-height:.83rem;
   margin-bottom:1.2rem;
+  /* 「版面」页的「日期大小」会给它写 scale()。原点必须在中心 ——
+     默认值本来就是 50% 50%，写出来是为了和 .wx-v2 那条对齐、
+     也免得以后有人改了默认值还不知道这里有依赖。 */
+  -webkit-transform-origin:50% 50%; transform-origin:50% 50%;
 }
 
 /* ⚠️ 改这一栏的高度/宽度会牵动三处，必须同步：
@@ -202,8 +206,8 @@ html, body {
        不再直接压低上限。但仍然要同步那个常量，否则天气栏会在放不下的时候溢出。 */
 .bar--weather {
   height:1.02rem;      /* = 2 行 × .42 行距 + .18 余量 */
-  line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】——
-                          它撑高 v1 的单行版；三模块那套各自带 line-height，不看它 */
+  line-height:1.22rem; /* ⚠️ 刻意【不跟着 height 变】—— 三模块那套各自带 line-height，
+                          不看它；但 v1 的单行版已经删掉（见下），所以它现在只是个基准值 */
   margin-top:1.2rem;
   /* ⚠️ 必须写死满屏宽（不能让它贴着内容收缩）——
      三模块那套是靠"左右两格等宽"把中间模块顶到屏幕中轴上的，
@@ -215,20 +219,20 @@ html, body {
   -webkit-justify-content:center; justify-content:center;
 }
 
-/* 天气两套排布都在 DOM 里，靠这组规则切换显示。
-   两份都填数据，所以切样式时不需要重新请求天气，也不会闪。 */
-.wx-v1 {                  /* v1 的天气单行：描述 + 当前温度 + 「最低/最高」 */
-  display:none;           /* 默认（v2）只显示两栏版 */
-  text-align:center;
-  width:100%;
-}
-
-/* ── v1 平衡样式：等大卡片 + 小字栏 + 天气单行 ── */
+/* ── v1 平衡样式：等大卡片 + 小字日期栏 ──
+   ⚠️ v1 曾经还有一套「天气单行版」（.wx-v1），v4.32 起【删掉了】——
+      改成三套样式共用同一个三模块天气栏（.wx-v2）。
+      所以这里不再有 .wx-v1 的规则、也没有"v1 下隐藏 .wx-v2"那条覆盖了。
+   ⚠️ 天气栏的高度覆盖也【一起去掉了】。原来 v1 把它设成 1.4rem 是为了给单行版撑高；
+      三模块的内容高是 .84rem，塞进 1.4rem 的盒子会被 align-items:center 居中出
+      .28rem 的上下留白 —— 时钟到天气的【可见】间距会从 1.35 变成 1.63rem，
+      比 v2/v3 松一大截。现在回落到基础的 1.02rem（留白 .09rem，与 v2/v3 一致），
+      只留 v1 自己的间距。⇒ FOOTPRINT.v1.h 也跟着从 9.58 变成 9.20（见那里）。
+   日期栏那 1.4rem 保留 —— 它的字号是 .34rem、line-height 也是 1.4，内容填得满，
+   不存在同样的留白问题。 */
 body.style-v1 .bar            { font-size:.34rem; letter-spacing:.14em; }
 body.style-v1 .bar--date      { height:1.4rem; line-height:1.4rem; margin-bottom:1.35rem; }
-body.style-v1 .bar--weather   { height:1.4rem; line-height:1.4rem; margin-top:1.35rem; }
-body.style-v1 .wx-v1          { display:block; }
-body.style-v1 .wx-v2          { display:none; }
+body.style-v1 .bar--weather   { margin-top:1.35rem; }
 
 /* ── v3 走秒带样式：去掉秒卡、时与分居中、外圈套一条走秒的环 ──
    秒卡退出布局后，.clock 的宽度自然变成「时 + 分」两张卡 = 8.72rem
@@ -549,6 +553,13 @@ body.light .rain i { background:#2f7fd4; }
      而 .stage 居中的是「时钟 + 上下文字栏」整组，环就会垂直错位。
      （v2 重写时这里被拿掉过，因为当时没有东西需要它。） */
   position:relative;
+  /* ⚠️ z-index:1 是为了「版面」页那两个位置滑杆：日期/天气栏被平移后一旦
+     与时钟重叠，谁在上面就由层叠顺序决定。日期栏在 DOM 里排在 .clock 前面、
+     天气栏排在后面 —— 不加这个的话，天气栏往上移会【压在数字上面】（文字叠文字），
+     而日期栏往下移却被时钟盖住，两边行为不一致。
+     给时钟一个 z-index，两根栏就都老老实实待在下层。
+     今天没有任何重叠，所以这条对现状是零影响。 */
+  z-index:1;
   display:-webkit-flex; display:flex;
   /* 底对齐：三张卡底部对齐后，缩小一半的秒卡就以它的【左下角】为锚点定位，
      且与分卡的间距不变。整个卡组仍由 .stage 的 align-items:center 做水平居中。 */
@@ -884,11 +895,13 @@ body.h12 .ampm { display:block; }
 
 /* 分页：同时只显示一页。给个最小高度，切页时面板不会忽高忽低。 */
 .panel .page      { display:none; min-height:152px; }   /* = 4 行 × 38
-   ⚠️ 这个 min-height 必须等于【最长那一页的行数 × .row 的高度】，三页才等高、
-      切标签页时面板不跳高度。当前最长的是 4 行，有【两页】并列为 4 行：
+   ⚠️ 这个 min-height 必须等于【最长那一页的行数 × .row 的高度】，各页才等高、
+      切标签页时面板不跳高度。当前最长的是 4 行，有【三页】并列为 4 行：
         「时间」小时制/冒号/走带/农历
         「天气」数据源/自动主题/模块/位置
-      往任意一页加行数超过 4 时，这里要跟着加。 */
+        「版面」日期大小/日期位置/天气大小/天气位置
+      往任意一页加行数超过 4 时，这里要跟着加。
+   （它管的是"页与页之间"，与面板总高无关 —— 底部那行版本号不会影响它。） */
 .panel .page.on   { display:block; }
 
 .panel .row {
@@ -901,6 +914,9 @@ body.h12 .ampm { display:block; }
   font-size:16px;
   color:#8a8a8a;
   font-family:"Avenir Next","PingFang SC",sans-serif;
+  /* ⚠️ 不许折行：.row 是固定 38px 高、overflow 可见，标签一折行就会糊到下一行上。
+     「版面」页那四个 4 字标签在 308px 内宽里放得下，但字体回退到别的字形就难说。 */
+  white-space:nowrap;
 }
 /* 控件一：分段选择（枚举型，2–4 个互斥选项） */
 .panel .seg {
@@ -1014,12 +1030,28 @@ body.light .panel .txt        { background:#ededed; color:#222; }
 body.light .panel .txt:focus  { background:#e4e4e4; }
 body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
-/* 滑杆右边的数值读出。定宽居中，拖动时数字变化才不会把滑杆挤得左右晃 */
+/* 滑杆右边的数值读出。定宽居中，拖动时数字变化才不会把滑杆挤得左右晃。
+   ⚠️ 宽度 62px 是给「版面」页那四个滑杆用的：位置读数最宽是 `-1.00rem`（8 字符
+      ≈ 50px），52px 太挤。走带的读数最长只有「连续」2 字，跟着变宽没有影响。
+   ⚠️ 用 flex:0 0 62px 而不是 width —— .row 是 flex 容器，只写 width 的话
+      它在挤的时候仍然会被压缩（flex-shrink 默认 1），把滑杆的宽度吃掉。 */
 .panel .val {
-  width:52px; text-align:center;
+  -webkit-flex:0 0 62px; flex:0 0 62px;
+  text-align:center;
   font-size:13px; color:#e0e0e0;
   font-family:"Avenir Next","PingFang SC",sans-serif;
 }
+/* 面板底部的版本号。压得很暗 —— 它是给人排查"iPad 上跑的是哪一版"用的，
+   不该和设置项抢注意力。内容由 JS 从 APP_VER 填。 */
+.panel .ver {
+  margin-top:6px;
+  text-align:right;
+  font-size:11px;
+  color:#5a5a5a;
+  font-family:"Avenir Next","PingFang SC",sans-serif;
+}
+body.light .panel .ver { color:#a0a0a0; }
+body.amber .panel .ver { color:#6b5a44; }
 .panel .step span {
   width:60px;
   text-align:center;
@@ -1108,9 +1140,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     </div>
   </div>
 
-  <!-- 天气两套排布都写在 DOM 里，靠 body.style-v1 切换显示。
-       两份都由 JS 填数据，所以切样式时不需要重新请求天气、也不会闪。
-       v2/v3 版 = 一行三模块：
+  <!-- 天气栏 = 一行三模块，【三套样式共用这一份 DOM】（v4.32 起；此前 v1 另有单行版）：
 
          左：当前温度 + 高低温   中：体感温度 / 湿度   右：一小时后
 
@@ -1179,10 +1209,9 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         </div>
       </div>
     </div>
-    <!-- v1 版：单行「描述 当前温度 最低/最高」，无箭头。
-         ⚠️ v1 是另一套紧凑排布，【不参与】上面的模块开关 ——
-            它本来就只有一行，塞不下体感温度/湿度。开关只影响 v2/v3。 -->
-    <div class="wx-v1" id="wx-v1">-</div>
+    <!-- ⚠️ v4.32 起三套样式【共用】这一个三模块天气栏 ——
+         原来 v1 用的是另一套单行紧凑版（.wx-v1），已删除。
+         所以天气栏现在没有"两套排布"，改版式不用再想"另一套要不要跟着改"。 -->
   </div>
 
 </div>
@@ -1195,6 +1224,7 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     <button type="button" data-tab="look">外观</button>
     <button type="button" data-tab="time">时间</button>
     <button type="button" data-tab="wx">天气</button>
+    <button type="button" data-tab="layout">版面</button>
   </div>
 
   <!-- ── 外观 ── -->
@@ -1316,6 +1346,50 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     </div>
   </div>
+
+  <!-- ── 版面 ──
+       日期栏与天气栏各自的「大小」与「上下位置」。四个值【三套样式共用一套】
+       （不像「外观」页的「大小」那样按样式各记）。
+
+       ⚠️ 标签一律 4 个字，别写「日期上下位置」——
+          `.row` 是固定 38px 高，标签一折行就会糊到下一行上（已给 .lbl 加 nowrap 兜底）。
+       ⚠️ 每个滑杆都要【显式写 min/max/step】：JS 里读 el.min/el.max/el.step 时，
+          HTML 里没写就是空字符串、不是浏览器内部的默认值。
+       ⚠️ 位置的正负：【正 = 向下】。读数用 ASCII 减号（见 JS 里 modYLabel 的注释）。
+       ⚠️ 这四根滑杆不走「大小」那个步进器 —— 拖动比连点加减号直观得多，
+          而且它们本来就是连续量。 -->
+  <div class="page" data-page="layout">
+    <div class="row" data-k="dateScale">
+      <span class="lbl">日期大小</span>
+      <input class="rng" type="range" id="date-scale"
+             min="0.5" max="1.5" step="0.05" value="1">
+      <span class="val" id="date-scale-val">100%</span>
+    </div>
+    <div class="row" data-k="dateY">
+      <span class="lbl">日期位置</span>
+      <input class="rng" type="range" id="date-y"
+             min="-1" max="1" step="0.05" value="0">
+      <span class="val" id="date-y-val">0rem</span>
+    </div>
+    <div class="row" data-k="wxScale">
+      <span class="lbl">天气大小</span>
+      <input class="rng" type="range" id="wx-scale"
+             min="0.5" max="1.5" step="0.05" value="1">
+      <span class="val" id="wx-scale-val">100%</span>
+    </div>
+    <div class="row" data-k="wxY">
+      <span class="lbl">天气位置</span>
+      <input class="rng" type="range" id="wx-y"
+             min="-1" max="1" step="0.05" value="0">
+      <span class="val" id="wx-y-val">0rem</span>
+    </div>
+  </div>
+
+  <!-- 版本号。放在所有 .page 之外，所以切标签页时它一直在。
+       ⚠️ 它会让面板总高多出十几像素 —— 这和 `.panel .page{min-height}` 那条
+          "三页等高"的耦合【无关】（那条管的是页与页之间，不是面板总高），别混。
+       内容由 JS 从 APP_VER 填进去，这里留空。 -->
+  <div class="ver" id="ver"></div>
 </div>
 
 <script>
@@ -1326,6 +1400,13 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   /* ⚠️ 这里【刻意不留任何默认坐标】。位置是隐私，仓库是公开的 ——
      经纬度由使用者在设置面板里自己填一次，存在本机 localStorage 里。
      没填时天气几栏显示占位符 "-"，并且【不发任何网络请求】。 */
+
+  /* 版本号 —— 显示在设置面板底部。
+     ⚠️⚠️ 【每改一版都要改这一个字符串】，否则面板上显示的和 `版本记录.md` 会对不上。
+         只此一处，不要在别处再写死版本号。
+         每次定版时与 版本记录.md 的新小节标题、以及备份 zip 的文件名保持一致。 */
+  var APP_VER = 'v4.32';
+
   // 天气刷新间隔：10 分钟。
   // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
   // 拉取间隔比它短一点，陈旧度才不会被"数据本身旧 + 等待下次拉取"叠加放大。
@@ -1448,7 +1529,6 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   var wxMain  = document.getElementById('wx-main');   // 左模块：描述 + 当前温度
   var wxHi    = document.getElementById('wx-hi');     // 左模块：最高温
   var wxLo    = document.getElementById('wx-lo');     // 左模块：最低温
-  var wxV1    = document.getElementById('wx-v1');     // v1 单行版（不参与三模块）
   var wxV2El  = document.getElementById('wx-v2');     // 三模块那套的外壳：layout() 会给它写 scale()
   var wxFeel  = document.getElementById('wx-feel');   // 中模块 上行：体感温度
   var wxHum   = document.getElementById('wx-hum');    // 中模块 下行：相对湿度
@@ -1486,6 +1566,12 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
                     // 别的设置都是"从一组里选一个"，这个每个键各管各的。
                     // 默认【三个全开】。
                     wxShow: { main:true, next:true, detail:true },
+                    // 日期栏 / 天气栏【自己】的大小与上下位置。
+                    // ⚠️ 三套样式【共用一套】，和下面的 sizeMul 不同（那个是按样式分键的）——
+                    //    它们描述的是"我要这两栏多大、在哪"，与卡片样式无关。
+                    // 位置单位是 rem，【正 = 向下】；大小 1 = 原样。
+                    dateScale: 1, dateY: 0,
+                    wxScale:   1, wxY:  0,
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* wxShow 的键，按【天气栏里从左到右】的顺序排 —— 注意是 detail 在中间。
@@ -1504,6 +1590,39 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     if (v < SIZE_MIN) { return SIZE_MIN; }
     if (v > SIZE_MAX) { return SIZE_MAX; }
     return Math.round(v * 100) / 100;     // 消掉浮点累加误差，否则会出来 0.9500000001
+  }
+
+  /* ── 日期栏 / 天气栏自己的「大小」与「上下位置」 ──
+     ⚠️ 这两组值是【三套样式共用一套】，不像 sizeMul 那样按样式分键 ——
+        它们描述的是"我要这两栏多大、在哪"，与卡片样式无关。
+     位置的正负：【正 = 向下】，与 CSS 的 translateY 同向。
+     ⚠️ 上下位置的范围只给 ±1.0rem（不是 ±1.5）：日期栏往下走约 .78rem 就贴到时钟、
+        天气栏往上走约 1.2rem 就压到数字上，再往外的行程是废的 ——
+        而且行程越短，每格越宽、越好拖。 */
+  var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 1.50;
+  var MOD_Y_MAX = 1.00;
+
+  function clampModScale(v) {
+    if (typeof v !== 'number' || isNaN(v)) { return 1; }
+    if (v < MOD_SCALE_MIN) { return MOD_SCALE_MIN; }
+    if (v > MOD_SCALE_MAX) { return MOD_SCALE_MAX; }
+    return Math.round(v * 100) / 100;     // 消掉浮点残渣，理由同 clampMul
+  }
+  function clampModY(v) {
+    if (typeof v !== 'number' || isNaN(v)) { return 0; }
+    if (v < -MOD_Y_MAX) { return -MOD_Y_MAX; }
+    if (v >  MOD_Y_MAX) { return  MOD_Y_MAX; }
+    return Math.round(v * 100) / 100;     // ⚠️ 步进 0.05 时 min+round(...)×step 会出 1.1e-16，
+  }                                       //    不收口就会变成 translateY(8e-15px) 并污染存档
+
+  function modScaleLabel(v) { return Math.round(v * 100) + '%'; }
+  /* ⚠️ 负号必须用 ASCII 的 `-`，不能用 U+2212「−」——
+     Avenir Next 里没有 U+2212，会回退到苹方按【全角】渲染，读数宽度直接翻倍、
+     把滑杆挤掉一截。.step 按钮里那个「−」是单字符按钮，无所谓，读数里不行。 */
+  function modYLabel(v) {
+    if (v > 0) { return '+' + v.toFixed(2) + 'rem'; }
+    if (v < 0) { return v.toFixed(2) + 'rem'; }   // 负数自带 ASCII 减号
+    return '0rem';
   }
 
   /* 走带（只对走秒样式有意义）—— 【一个数就是全部】：settings.ringMs
@@ -1602,6 +1721,12 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         settings.sizeMul.v2 = clampMul(o.sizeMul.v2);
         settings.sizeMul.v3 = clampMul(o.sizeMul.v3);
       }
+      // 日期/天气的大小与位置：clamp 自己会把脏值/缺失退回默认（1 / 0）。
+      // ⚠️ 必须逐个过 clamp —— 它们会直接被拼进 transform，脏数据会静默把版面搞坏。
+      settings.dateScale = clampModScale(o.dateScale);
+      settings.dateY     = clampModY(o.dateY);
+      settings.wxScale   = clampModScale(o.wxScale);
+      settings.wxY       = clampModY(o.wxY);
     } catch (e) {}   // 存了脏数据也一样退回默认值，不抛
   }
 
@@ -1704,10 +1829,25 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     var el2 = document.getElementById('ring-ms-val');
     if (el2) { setText(el2, ringLabel(ms)); }
 
+    // 版面那四根。⚠️ 这里写 el.value 是安全的（整刷路径，不是在拖动中）——
+    //    拖动中写字会和手指抢滑杆，那条规则只约束滑杆自己的 handler（见 bindMod）。
+    syncModControl('date-scale', settings.dateScale, true);
+    syncModControl('wx-scale',   settings.wxScale,   true);
+    syncModControl('date-y',     settings.dateY,     false);
+    syncModControl('wx-y',       settings.wxY,       false);
+
     // 位置：正在编辑时【不回写】，否则会把用户打到一半的字覆盖掉
     var gi = document.getElementById('geo-in');
     if (gi && document.activeElement !== gi) { gi.value = settings.geo || ''; }
     syncGeoState();
+  }
+
+  /* 刷一根「版面」滑杆：滑杆位置 + 读数。 */
+  function syncModControl(id, v, isScale) {
+    var el = document.getElementById(id);
+    if (el) { el.value = v; }
+    var rv = document.getElementById(id + '-val');
+    if (rv) { setText(rv, isScale ? modScaleLabel(v) : modYLabel(v)); }
   }
 
   /* 位置输入框的"填错了"提示：有内容但解析不出坐标 → 加 .bad（文字变红）。
@@ -1838,7 +1978,11 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
           本身 —— 早先这里多写过一句"v3 的 padding-top 算在 h 里"，与那条 CSS
           规则直接矛盾，已删。） */
   var FOOTPRINT = {
-    v1: { w: 13.08, h: 9.58 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.4 = 8.38，+ .stage 的 1.2
+    v1: { w: 13.08, h: 9.20 },   // 卡组 13.08rem 宽；1.4+1.35+2.88+1.35+1.02 = 8.00，+ .stage 的 1.2
+                                 // ⚠️ 天气栏那项是 1.02（基础值），不再是 1.4 ——
+                                 //    v4.32 把 v1 的天气栏改成三模块后，那条 1.4rem 的高度覆盖
+                                 //    一起去掉了（内容只有 .84，1.4 会多出 .28 的上下留白）。
+                                 //    改那条 CSS 必须同步这个数。
     v2: { w: 11.18, h: 8.33 },   // 卡组 11.18rem 宽；.83+1.2+2.88+1.2+1.02 = 7.13，+ .stage 的 1.2
                                  // ⚠️ 【不许把 11.18 降下来】：v2 的天气栏不被缩小，全靠
                                  //    "v2 的夹取上限(88.8/66.6) < barFit(93.6/70.2)"这个巧合。
@@ -1848,7 +1992,10 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   };                             // 宽度要把 v3 的【三个消费者】都数一遍，取最大的那个：
                                  //   时钟卡组 8.72 = #hh 4.16 + 冒号 .40 + #mm 4.16（含最外侧 .28 外边距）
                                  //   走带环   9.42 = 8.72 + 2×0.35   ← 【绝对定位、不参与 .clock 布局】
-                                 //   日期栏   ≈8.3~8.8（「12月31日 星期三 · 闰四月三十」含 .10em 字距）
+                                 //   日期栏   8.4 = DATE_W_REM（「12月31日 星期三 · 闰四月三十」）
+                                 //            ⚠️ 第四个消费者，常量写在 BAR_HALF_REM 附近。
+                                 //               8.4 < 9.42 ⇒ 现在不改变 v3.w；但用「日期大小」
+                                 //               把它放大后会超过，所以那边单独有一道闸门。
                                  // ⚠️ 必须记 9.42（环）。环是绝对定位、宽度写在 .ring 自己身上，
                                  //    FOOTPRINT 里【看不见它】—— 漏记的后果是最大倍率下环的左右两段
                                  //    被 body 的 overflow:hidden 切平（横屏约 −9px、竖屏约 −18px），
@@ -1879,6 +2026,24 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
         ③ 天气每 10 分钟、温度每变一位数字都会让量到的宽度变 → 缩放比例跟着跳，
            那正是用户最反感的"位移"，比"一直小一点"刺眼得多。 */
   var BAR_HALF_REM = 5.305;
+
+  /* 日期栏的【全宽最坏值】（rem）。它是单个居中的块，所以不像天气栏那样要乘 2。
+     最坏串是「12月31日 星期三 · 闰四月三十」——
+     WMO 之外还要算农历（`lunarText` 最多「闰」+ 2 字月 + 2 字日 = 5 字）：
+       10 汉字 + 4 数字 + 3 空格 + 1 个「·」 ≈ 13.3em，加 `.10em` 字距 ≈ 15.1em，
+       在 `.54rem`（v2/v3 的 `.bar` 字号）下 ≈ 8.2rem → 记账 8.4（留 2%）。
+     ⚠️ 它是 v3 的【第四个宽度消费者】，见 FOOTPRINT.v3 那段审计。8.4 < 走带环的 9.42
+        ⇒ 平时不会成为瓶颈；但用「日期大小」把它放大之后会，所以要给它单独一道闸门。
+     ⚠️ 和 BAR_HALF_REM 一样用【静态最坏值】，不实测 —— 实测会被 transform 反噬
+        （getBoundingClientRect 返回的是变换后的宽，自己量自己成环），
+        而且农历开关、月份位数（1月 / 12月）都会让宽度跳。 */
+  var DATE_W_REM = 8.4;
+
+  /* 上一次 layout() 算出的根字号（px）。
+     滑杆的 handler 要用它把 rem 换算成 px，但【不能】去读
+     documentElement.style.fontSize —— 那是刚写进去的字符串，解析回来又脏又绕。
+     也不可能在 handler 里重跑 layout()（整页重排，逐帧拖必掉帧）。 */
+  var curSize = 0;
 
   function layout() {
     var w = window.innerWidth, h = window.innerHeight;
@@ -1927,13 +2092,67 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
           "h 依赖 scale 依赖 w"的反馈环。
        ⚠️ 副作用：最大倍率下天气栏的可见内容比它的盒子小，栏底会多出一点视觉留白。
           这是预期的，不用去"修"。 */
-    var barFit   = (w * FIT) / (2 * BAR_HALF_REM);      // 根字号超过它，天气栏就放不下
-    var barScale = (size > 0 && size > barFit) ? (barFit / size) : 1;
-    if (wxV2El) {
-      var t = (barScale < 1) ? ('scale(' + barScale + ')') : '';
-      wxV2El.style.webkitTransform = t;   // iOS 9 不写前缀也认，两份都写只是保险
-      wxV2El.style.transform = t;
+    curSize = size;
+    applyModTransforms(size);
+  }
+
+  /* 把日期栏 / 天气栏的「大小」与「上下位置」落到 transform。
+     ⚠️ 挂载点只有两处：layout() 末尾、以及那四个滑杆的 handler
+        （它们传的是缓存的 curSize）。**绝不走 applySettings()** ——
+        那会重跑 initRing/tick，而且拖动时逐帧跑不起。
+
+     transform 在这里有三条关键性质：
+       ① 【不参与布局】⇒ 时钟不会被推走、FOOTPRINT 一个数都不用动、
+          夹取不用重算 ⇒ 这条路径零重排，拖动才能跟手。
+       ② 写法 `translateY(..) scale(..)`：变换从右往左作用，所以是
+          "先以自身中心缩放、再整体平移【未缩放的】Y 像素"。
+          ⚠️ 顺序写反（`scale(..) translateY(..)`）的话平移量会被缩放吃掉 ——
+             症状是"拖大小滑杆时位置也跟着变"，两根滑杆不再独立，很难查。
+       ③ 缩放以自身中心为原点 ⇒ 上下左右对称外扩。日期栏因此会横向变宽，
+          所以要跟天气栏一样加【横向闸门】（见下）；不然放大到 1.07× 以上
+          （v3）就会被 body 的 overflow:hidden 把左右切平，不报错、不重排。
+
+     ⚠️ 上下位置在这里【按屏幕余量夹取】，而不是并进 layout() 的 ceil：
+        并进 ceil 的话每次拖动都要重算根字号 → 整页重排 → A5 上必掉帧。
+        夹取的余量 = 组上下各剩多少，再扣掉缩放自己往外扩的那部分。 */
+  function applyModTransforms(size) {
+    if (!(size > 0)) { return; }
+    var w = window.innerWidth;
+    var isV1 = (settings.style === 'v1');
+
+    // 横向闸门：与天气栏同款、同构（min(用户值, 刚好放得下的那个值)）
+    var ds = Math.min(settings.dateScale, fitScale(DATE_W_REM,            w, size));
+    var ws = Math.min(settings.wxScale,   fitScale(BAR_HALF_REM * 2,      w, size));
+
+    // 上下能走多远
+    var slack = (window.innerHeight - FOOTPRINT[settings.style].h * size) / 2;
+    slack -= Math.max(0, ds - 1) * (isV1 ? 1.4 : 0.83) * size / 2;   // 日期栏的盒高
+    slack -= Math.max(0, ws - 1) * 1.02 * size / 2;                  // 天气栏的盒高
+    if (slack < 0) { slack = 0; }
+    var dY = clampTo(settings.dateY * size, slack);
+    var wY = clampTo(settings.wxY   * size, slack);
+
+    // ⚠️ 全默认（缩放 1、位置 0）时写空串、不写 transform ——
+    //    保持"默认观感逐位不变"，也免得平白多出层叠上下文与包含块。
+    if (dateEl) {
+      var td = (ds === 1 && dY === 0) ? '' : ('translateY(' + dY + 'px) scale(' + ds + ')');
+      dateEl.style.webkitTransform = td;
+      dateEl.style.transform = td;
     }
+    if (wxV2El) {
+      var tw = (ws === 1 && wY === 0) ? '' : ('translateY(' + wY + 'px) scale(' + ws + ')');
+      wxV2El.style.webkitTransform = tw;   // iOS 9 不写前缀也认，两份都写只是保险
+      wxV2El.style.transform = tw;
+    }
+  }
+  /* 一个 rem 宽的块最多能放大到多少倍而不超出屏幕（返回倍数，不是 px）。 */
+  function fitScale(wRem, w, size) {
+    return Math.min(1, (w * FIT / wRem) / size);
+  }
+  function clampTo(v, lim) {
+    if (v >  lim) { return  lim; }
+    if (v < -lim) { return -lim; }
+    return v;
   }
 
   /* 把文字写进某个半片。结构固定为 <div class="half"><span>字</span></div>，
@@ -2055,17 +2274,25 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
   /* 冒号呼吸的包络：一秒一个周期，返回 0..1。
      刻意【不用正弦】—— 正弦在高低两端一路平滑，人眼分不出"亮"与"灭"是两个状态。
-     这里做成「棱角被圆滑化的方波」：
-       [0, PLAT)                     平顶在 0（灭）
-       [PLAT, PLAT+RAMP)             smoothstep 升到 1
-       [PLAT+RAMP, 2·PLAT+RAMP)      平顶在 1（亮）
-       [2·PLAT+RAMP, 1)              smoothstep 降回 0
+     这里做成「棱角被圆滑化的方波」，四段依次是：
+       [0, OFF)                     平顶在 0（全灭）
+       [OFF, OFF+UP)                smoothstep 升到 1
+       [OFF+UP, OFF+UP+ON)          平顶在 1（全亮）
+       [OFF+UP+ON, 1)               smoothstep 降回 0
      选 smoothstep 是因为它两端的斜率恰为 0 —— 与两侧平顶无缝相接，
      这正是"方波的棱角被圆滑掉"的数学形式；用线性过渡则会留下两个折角。
-     相位：PHASE 把"亮"的平顶【正对整秒】—— 平顶中心落在 p=0，
-     于是冒号最亮的那一刻就是秒数跳变的那一刻（见下面的推导）。 */
-  var PLAT = 0.32;                    // 高低平顶各占一秒的比例
-  var RAMP = 0.5 - PLAT;              // 过渡段占比（= 0.18）
+
+     ⚠️ 两个平顶【不一样长】、两个过渡段也【不一样长】，这是用户要的：
+        "从亮到灭更快、全灭的时间更长" ⇒ 暗平顶比亮平顶长、下降段比上升段短。
+        旧版是一个 PLAT 管两头（各 0.32）+ 两个 0.18 的过渡段。 */
+  var PLAT_OFF = 0.40;                // 暗平顶时长（"全灭"有多久）—— 调大 = 灭的停顿更久
+  var PLAT_ON  = 0.32;                // 亮平顶时长
+  var RAMP_UP  = 0.18;                // 上升段占比（灭 → 亮）
+  /* ⚠️ 下降段【由另外三个推出来】，不要单独写死 ——
+     这样四段之和恒等于 1，改任何一个都不会让周期跑偏（差一点点就会每秒漂一点）。
+     ⚠️ 下限 0.02 是护栏：哪天有人把 PLAT_ON 调到把余量吃光，RAMP_DOWN 会变成 0 或负数，
+        而负的除数会让 smoothstep 输出反向 —— 表现是"下降段反而在往上窜"，很难查。 */
+  var RAMP_DOWN = Math.max(0.02, 1 - PLAT_OFF - PLAT_ON - RAMP_UP);   // = 0.10 ⇒ 灭下去比亮起来快 1.8 倍
 
   /* 相位偏移 —— 定的是【哪一个瞬间】对齐整秒。
 
@@ -2075,25 +2302,30 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
 
      所以改成让【上升段上亮度达到 ALIGN_T 对应值的那一刻】对齐整秒：
        smoothstep(t) = t²(3−2t)，t = 0.61 时 ≈ 0.662，即上升途中亮度 66% 处。
-       PHASE = PLAT + ALIGN_T·RAMP = 0.32 + 0.61×0.18 ≈ 0.43
-     对照：旧的 PHASE = 0.66 让这个 66% 点落在 frac 0.77，比整秒早 0.23 秒 ——
-     那 0.23 秒就是"数字对齐了、视觉偏早"的全部来源。
+       PHASE = OFF + ALIGN_T·UP = 0.40 + 0.61×0.18 ≈ 0.51
+
+     ⚠️ PHASE 必须【由分段常量推出来】，不能写死。验算：
+        p = frac(sec) + PHASE；上升段是 [OFF, OFF+UP)，
+        亮度到 smoothstep(ALIGN_T) 时 p = OFF + ALIGN_T·UP = PHASE；
+        而 frac(sec) = 0 时 p 恰好 = PHASE ⇒ 那一刻就是整秒 ✓
+        这条性质与 OFF / UP 的取值【无关】，所以这次把平顶改长、下降段改短，
+        都不会破坏"对齐整秒"。
 
      要调就动 ALIGN_T：调小 → 对齐点更靠"刚亮起"；调大 → 更靠"已经很亮"。
-     若要退回"平顶中心对齐"：PHASE = PLAT / 2（整秒最暗）
-                             或 PHASE = PLAT + RAMP + PLAT / 2（整秒最亮）。 */
+     若要退回"平顶中心对齐"：PHASE = OFF / 2（整秒最暗）
+                             或 PHASE = OFF + UP + ON / 2（整秒最亮）。 */
   var ALIGN_T = 0.61;                 // smoothstep 参数；0.61 处亮度 ≈ 66%
-  var PHASE = PLAT + ALIGN_T * RAMP;  // ≈ 0.43
+  var PHASE = PLAT_OFF + ALIGN_T * RAMP_UP;   // ≈ 0.51
 
   function smoothstep(t) { return t * t * (3 - 2 * t); }
 
   function colonBeat(sec) {
     var p = sec - Math.floor(sec) + PHASE;   // 0..1 的周期相位（已对齐整秒）
     if (p >= 1) { p -= 1; }
-    if (p < PLAT)            { return 0; }
-    if (p < PLAT + RAMP)     { return smoothstep((p - PLAT) / RAMP); }
-    if (p < 2 * PLAT + RAMP) { return 1; }
-    return 1 - smoothstep((p - (2 * PLAT + RAMP)) / RAMP);
+    if (p < PLAT_OFF)                     { return 0; }
+    if (p < PLAT_OFF + RAMP_UP)           { return smoothstep((p - PLAT_OFF) / RAMP_UP); }
+    if (p < PLAT_OFF + RAMP_UP + PLAT_ON) { return 1; }
+    return 1 - smoothstep((p - (PLAT_OFF + RAMP_UP + PLAT_ON)) / RAMP_DOWN);
   }
 
   /* ===== 走带「脉冲」的缓动曲线：改用微软 Fluent 的那套 =====
@@ -2270,8 +2502,10 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       }
     }
 
-    // 冒号的呼吸：周期 1 秒（1Hz），**整秒最暗、中途最亮**（与上一版相位相反）。
-    // 曲线见 colonBeat() —— 是"圆角方波"而不是正弦。
+    // 冒号的呼吸：周期 1 秒（1Hz）。曲线见 colonBeat() —— "圆角方波"而不是正弦。
+    // ⚠️ 原先这里写的是"整秒最暗、中途最亮"，与 PHASE 那段推导（把上升段的 66% 处
+    //    对齐整秒）自相矛盾 —— 按现在的相位，整秒时亮度已经在上升途中（约 66%），
+    //    既不是最暗也不是最亮。是这段注释错了，不是推导错了。
     // 三种样式共用同一份相位，所以两个冒号（平衡样式）是同步的。
     if (colonOn) {
       var beat = colonBeat(sec);
@@ -2475,11 +2709,8 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
       setText(wxNextW, (WMO[nx.code] || '') + nxT);   // 第二行：未来一小时的天气 + 温度
       setText(wxNextP, nx.prob + '%');                // 第三行：「降雨概率」四个字写在 HTML 里
     }
-
-    // v1 单行版。两份都填 —— 切样式时不用重新请求天气，直接切显示即可。
-    var v1 = desc + ' ' + now + '° ' + lo + '°/' + hi + '°';
-    if (nx) { v1 += ' · 1h ' + (WMO[nx.code] || '') + ' ' + nx.prob + '%'; }
-    setText(wxV1, v1);
+    // ⚠️ 这里曾经还有一份"v1 单行版"的拼串 —— v4.32 起三套样式共用这一套三模块，
+    //    已删除。`hi` / `lo` 现在只给模块一的 ↑↓ 用。
   }
 
   /* ================= 示例数据（本地预览用） =================
@@ -2531,7 +2762,6 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     setText(wxMain, '-'); setText(wxHi, '-'); setText(wxLo, '-');
     setText(wxNextW, ''); setText(wxNextP, '');
     setText(wxHum, '-');  setText(wxFeel, '-');   // 与格1 一致：有标签的格子用「-」，没标签的留空
-    setText(wxV1, '-');
     sunToday = null;
   }
 
@@ -2710,11 +2940,114 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     armAutoHide();
   });
 
-  /* ── 松紧滑杆 ──
-     这一项不走 bindTap 那套委托：滑杆需要【拖动】而不是点击。
-     用原生 input[type=range] 自带的行为，只在事件里取值。
+  /* ── 滑杆的通用绑定 ──
+     滑杆不走 bindTap 那套委托：它需要【拖动】而不是点击，用原生 input[type=range] 的行为。
      ⚠️ 拖动中【不写 localStorage】：iOS 的 localStorage 是同步的，
-        拖动时每帧写一次会在 A5 上拖出卡顿。存盘放到松手（change）时做。 */
+        拖动时每帧写一次会在 A5 上拖出卡顿。存盘放到松手（change）时做。
+
+     ⚠️ 为什么每根滑杆都要带兜底：这台 iPad 2（iOS 9）上原生滑杆
+        【抓得住、拖不动】—— 同一份代码在新 iPad / iPhone 上正常，差别在引擎不在逻辑。
+        这个坑对【每一个】滑杆都成立，所以整套东西共用这一份实现。
+        新加滑杆时【直接调 bindRange】，别另写一套。
+
+     handler(persist)：拿到新值之后做什么由各滑杆自己决定；
+       persist === true 表示"松手了，可以存盘"。
+     ⚠️ handler 里【不要】调 applySettings()（会重跑 layout/initRing/tick），
+        也不要调 applyRingState()（那是走带滑杆专属，管 rAF 循环的启停）。 */
+  var THUMB_PX = 20;         // ⚠️ 必须与 CSS 里 .rng::-webkit-slider-thumb 的 width 一致
+  var NATIVE_GRACE = 1000;   // 原生超过这么久没动静，就认为它"死了"
+
+  function bindRange(el, handler) {
+    if (!el || !el.addEventListener) { return; }
+
+    /* ⚠️ 下面这几个状态【必须是每次调用新建的】，不能提到函数外面共享 ——
+       共享的话，一根滑杆上的原生事件会刷新另一根的 nativeAlive，
+       兜底就会在坏设备上全程误判"原生还活着"、一次都不接管。
+       这是抽取时最容易踩、也最难查的一处。 */
+    var nativeAlive = 0;    // 原生最近一次真的动过是什么时候（0 = 这次开机还没见过）
+    var fbDragging  = false;
+    var fbTimer     = null;
+
+    /* ⚠️ range 的 min/max/step 是【反射给 JS 看的字符串】，HTML 里没写就是 ""
+       —— 不是浏览器内部的默认 0/100/1。不兜底的话 parseFloat("") = NaN，
+       一路算下去会把 NaN 写进值里（transform 变成 translateY(NaNpx)，静默失效）。 */
+    var mn = parseFloat(el.min), mx = parseFloat(el.max), sp = parseFloat(el.step);
+    if (isNaN(mn)) { mn = 0; }
+    if (isNaN(mx)) { mx = 100; }
+    if (isNaN(sp) || sp <= 0) { sp = 1; }
+
+    /* 两条路（原生 / 兜底）都从这里进 —— 殊途同归，不各写各的。 */
+    function commit(persist) {
+      handler(persist);
+      armAutoHide();     // 拖动期间别让面板 15 秒自动收起
+    }
+
+    // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
+    el.addEventListener('input',  function () { nativeAlive = Date.now(); commit(false); }, false);
+    el.addEventListener('change', function () { nativeAlive = Date.now(); commit(true);  }, false);
+
+    /* 手指 x → 值。滑块【中心】的行程是 trackLeft+THUMB/2 → trackRight−THUMB/2，
+       不是整条轨道宽 —— 拿轨道宽算，两端会整体偏掉半个滑块。
+       ⚠️ 结果要归到步进网格、并消掉浮点残渣：步进 0.05 时
+          min + round(...)×step 会算出 1.1e-16 这种数，写进设置再进 transform
+          就是 translateY(8e-15px)，还会一路污染 localStorage。 */
+    function valueFromX(clientX) {
+      var r = el.getBoundingClientRect();
+      var span = r.width - THUMB_PX;
+      if (span <= 0) { return mn; }   // ⚠️ 返回 mn，不要照抄某根滑杆的常量
+      var ratio = (clientX - r.left - THUMB_PX / 2) / span;
+      if (ratio < 0) { ratio = 0; }
+      if (ratio > 1) { ratio = 1; }
+      return Math.round((mn + Math.round(ratio * (mx - mn) / sp) * sp) * 1000) / 1000;
+    }
+    function touchX(e) {
+      var t = (e.touches && e.touches.length) ? e.touches[0]
+            : ((e.changedTouches && e.changedTouches.length) ? e.changedTouches[0] : null);
+      return t ? t.clientX : null;
+    }
+    function fbApply(x) {
+      // 原生醒了（哪怕只是刚刚）→ 立刻让位，这次手势剩下的部分全交给它
+      if (Date.now() - nativeAlive < NATIVE_GRACE) { fbDragging = false; return; }
+      if (x === null) { return; }
+      var v = valueFromX(x);
+      if (v === parseFloat(el.value)) { return; }   // 同值不重复处理 —— 两条路共存的去重
+      el.value = v;                                 // 原生不动，滑块只能靠这一句跟着手指走
+      commit(false);
+    }
+
+    el.addEventListener('touchstart', function (e) {
+      fbDragging = false;
+      var x = touchX(e);
+      if (fbTimer) { clearTimeout(fbTimer); }
+      // 先给原生 180ms：能用的设备这时早就派发 input 了。
+      // 一上来就抢的话，会和原生同时写值，滑块在手指底下轻微发抖。
+      fbTimer = setTimeout(function () {
+        fbTimer = null;
+        if (Date.now() - nativeAlive < NATIVE_GRACE) { return; }   // 原生在管，本次不碰
+        fbDragging = true;
+        fbApply(x);
+      }, 180);
+    }, false);
+    el.addEventListener('touchmove', function (e) {
+      if (!fbDragging) { return; }               // 原生在管，一个字节都不碰
+      fbApply(touchX(e));
+      if (fbDragging) { e.preventDefault(); }    // 自己接管时才拦（见"文档级 touchmove 放行 input"那段）
+    }, false);
+    /* ⚠️ 松手时【必须把那个 180ms 的定时器也清掉】——
+       否则"快速点一下就抬手"时 fbDragging 还是 false（touchmove 从没跑过），
+       但 180ms 后定时器照样触发 fbApply，把值改成"刚才点到的地方"。
+       只有一根滑杆时这个漏洞被 nativeAlive 的 grace 侥幸遮住了；
+       几根滑杆同时在，就成了"点一下别的滑杆，这根的值被悄悄改掉"。 */
+    function stopGesture() {
+      if (fbTimer) { clearTimeout(fbTimer); fbTimer = null; }
+      if (fbDragging) {
+        fbDragging = false;
+        handler(true);         // 兜底这条路自己存盘（对应原生的 change）
+      }
+    }
+    el.addEventListener('touchend',    stopGesture, false);
+    el.addEventListener('touchcancel', stopGesture, false);
+  }
   /* ── 位置输入框 ──
      input  → 实时存值（保持面板开着）
      change → 失焦时才触发，这时才存盘 + 重新取天气（打字中途反复请求没意义） */
@@ -2734,95 +3067,44 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
     }, false);
   }
 
+  /* ── 走带松紧滑杆 ── */
   var ringRange = document.getElementById('ring-range');
-  if (ringRange && ringRange.addEventListener) {
-    var onSlide = function (persist) {
-      settings.ringMs = clampRingMs(parseInt(ringRange.value, 10));  // 值本身就是毫秒
+  bindRange(ringRange, function (persist) {
+    settings.ringMs = clampRingMs(parseFloat(ringRange.value));   // 值本身就是毫秒
+    if (persist) { saveSettings(); }
+    // 只刷读数，不写回 ringRange.value ——
+    // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）。
+    // （唯一的例外是 bindRange 里的触摸兜底：它是在原生【完全不工作】时才接管的，
+    //   不写回的话滑块根本不会跟着手指动，读数和滑块就分家了。）
+    var rv = document.getElementById('ring-ms-val');
+    if (rv) { setText(rv, ringLabel(settings.ringMs)); }
+    // ⚠️ 别漏这一句：滑杆拖着拖着会跨过「关」这一档，开关类和帧循环都得跟着变。
+    //    漏掉它的后果见 applyRingState 上面的注释。
+    //    ⚠️ 这一句【只有走带滑杆能有】—— 它管 rAF 循环的启停；
+    //       别的滑杆调了会白烧电，甚至让冒号停跳。
+    applyRingState();
+  });
+
+  /* ── 版面：日期 / 天气的「大小」与「上下位置」 ──
+     ⚠️ 这四个 handler 【绝不调用 layout()】—— layout() 会重写根字号、引发整页重排，
+        而拖动是逐帧的，A5 上必掉帧。它们只写两个元素的 transform（纯合成、不重排、
+        不动时钟），用的根字号是上一次 layout() 缓存下来的 curSize。
+     位置：值 = rem，【正 = 向下】（与 CSS 的 translateY 同向）。 */
+  function bindMod(id, key, isScale) {
+    var el = document.getElementById(id);
+    bindRange(el, function (persist) {
+      settings[key] = isScale ? clampModScale(parseFloat(el.value))
+                              : clampModY(parseFloat(el.value));
       if (persist) { saveSettings(); }
-      // 只刷读数，不写回 ringRange.value ——
-      // 回写会和手指抢滑杆（值→位置→值 一来一回可能差一格，滑块会跳）。
-      // （唯一的例外是下面那条触摸兜底：它是在原生【完全不工作】时才接管的，
-      //   不写回的话滑块根本不会跟着手指动，读数和滑块就分家了。）
-      var el = document.getElementById('ring-ms-val');
-      if (el) { setText(el, ringLabel(settings.ringMs)); }
-      // ⚠️ 别漏这一句：滑杆拖着拖着会跨过「关」这一档，开关类和帧循环都得跟着变。
-      //    漏掉它的后果见 applyRingState 上面的注释。
-      applyRingState();
-      armAutoHide();     // 拖动期间别让面板 15 秒自动收起
-    };
-
-    /* 原生滑杆最近一次【真的动过】是什么时候（0 = 这次开机还没见过）。
-       能用的设备上原生拖动会持续派发 input/change，这个时间戳一直很新；
-       老设备上原生压根不派发，它永远停在 0 —— 这就是兜底的启动信号。 */
-    var nativeAlive = 0;
-
-    // iOS 9 / 桌面都支持 input（拖动中持续触发）与 change（松手/失焦）
-    ringRange.addEventListener('input',  function () { nativeAlive = Date.now(); onSlide(false); }, false);
-    ringRange.addEventListener('change', function () { nativeAlive = Date.now(); onSlide(true);  }, false);
-
-    /* ── 触摸兜底：只为"原生拖不动"的老 WebKit ──
-       自己按手指的 x 算值，并且【走同一个 onSlide 入口】——两条路殊途同归，不各写各的。
-       ⚠️ 不做 UA 判断（UA 判断最容易过时，而且这问题本来就跨版本）。
-          改用"原生最近有没有真的动过"当开关：原生一动，兜底当场退位并保持到本次手势结束；
-          下个手势若原生还是没动静，兜底重新接管。
-          于是在能用的设备上这套代码等于不存在，在不能用的设备上它就是全部。 */
-    var NATIVE_GRACE = 1000;   // 原生超过这么久没动静，就认为它"死了"
-    var THUMB_PX = 20;         // ⚠️ 必须与 CSS 里 .rng::-webkit-slider-thumb 的 width 一致
-    var fbDragging = false;    // 本次手势是否由兜底接管
-    var fbTimer    = null;
-
-    /* 手指 x → 毫秒。滑块【中心】的行程是 trackLeft+THUMB/2 → trackRight−THUMB/2，
-       不是整条轨道宽 —— 拿轨道宽去算，两端会整体偏掉半个滑块。 */
-    function valueFromX(clientX) {
-      var r    = ringRange.getBoundingClientRect();
-      var span = r.width - THUMB_PX;
-      if (span <= 0) { return RING_MS_MIN; }
-      var ratio = (clientX - r.left - THUMB_PX / 2) / span;
-      if (ratio < 0) { ratio = 0; }
-      if (ratio > 1) { ratio = 1; }
-      return RING_MS_MIN
-           + Math.round(ratio * (RING_MS_MAX - RING_MS_MIN) / RING_MS_STEP) * RING_MS_STEP;
-    }
-    function touchX(e) {
-      var t = (e.touches && e.touches.length) ? e.touches[0]
-            : ((e.changedTouches && e.changedTouches.length) ? e.changedTouches[0] : null);
-      return t ? t.clientX : null;
-    }
-    function fbApply(x) {
-      // 原生醒了（哪怕只是刚刚）→ 立刻让位，这次手势剩下的部分全交给它
-      if (Date.now() - nativeAlive < NATIVE_GRACE) { fbDragging = false; return; }
-      if (x === null) { return; }
-      var v = clampRingMs(valueFromX(x));
-      if (v === settings.ringMs) { return; }   // 同值不重复处理 —— 两条路共存的去重
-      ringRange.value = v;                     // 原生不动，滑块只能靠这一句跟着手指走
-      onSlide(false);
-    }
-
-    ringRange.addEventListener('touchstart', function (e) {
-      fbDragging = false;
-      var x = touchX(e);
-      if (fbTimer) { clearTimeout(fbTimer); }
-      // 先给原生 180ms：能用的设备这时早就派发 input 了。
-      // 一上来就抢的话，会和原生同时写值，滑块在手指底下轻微发抖。
-      fbTimer = setTimeout(function () {
-        fbTimer = null;
-        if (Date.now() - nativeAlive < NATIVE_GRACE) { return; }   // 原生在管，本次不碰
-        fbDragging = true;
-        fbApply(x);
-      }, 180);
-    }, false);
-    ringRange.addEventListener('touchmove', function (e) {
-      if (!fbDragging) { return; }               // 原生在管，一个字节都不碰
-      fbApply(touchX(e));
-      if (fbDragging) { e.preventDefault(); }    // 自己接管时才拦（见上面"放行 input"那段）
-    }, false);
-    ringRange.addEventListener('touchend', function () {
-      if (!fbDragging) { return; }
-      fbDragging = false;
-      saveSettings();                            // 兜底这条路自己存盘（对应原生的 change）
-    }, false);
-    ringRange.addEventListener('touchcancel', function () { fbDragging = false; }, false);
+      var rv = document.getElementById(id + '-val');
+      if (rv) { setText(rv, isScale ? modScaleLabel(settings[key]) : modYLabel(settings[key])); }
+      applyModTransforms(curSize);
+    });
   }
+  bindMod('date-scale', 'dateScale', true);
+  bindMod('wx-scale',   'wxScale',   true);
+  bindMod('date-y',     'dateY',     false);
+  bindMod('wx-y',       'wxY',       false);
 
   // 点面板和齿轮以外的任何地方 → 收起。
   // 这里**不** preventDefault —— 它只是旁观，不该影响页面其他默认行为。
@@ -2849,6 +3131,10 @@ body.light .panel .txt::-webkit-input-placeholder { color:#a8a8a8; }
   loadSettings();
   applySettings();          // 内部依次做 layout() / initRing() / syncSegs() / tick()
   showPage(curPage);   // 初始化分页高亮（HTML 里只有页面带 .on，标签没带）
+
+  /* 版本号：常量，只写一次，不进 syncControls（那不是"活值"） */
+  var verEl = document.getElementById('ver');
+  if (verEl) { setText(verEl, APP_VER); }
   scheduleTick();      // 对齐整秒触发（不是固定 250ms 轮询 —— 那会让秒显示滞后）
   // 走秒带不在这里起 —— 它由 applyRingState() 按当前样式和走带设置 start/stop
 
