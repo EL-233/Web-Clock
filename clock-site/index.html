@@ -1169,7 +1169,7 @@ body.amber .panel .ver { color:#6b5a44; }
                两段之间的缝由 y 坐标差决定。
                上下两个箭头是【坐标镜像】写出来的，不走 scaleY(-1)（见 CSS 那段注释）。
                stroke 颜色交给 CSS（.arw-up path / .arw-dn path），三个主题各自覆盖。 -->
-          <div class="wx-extremes">
+          <div class="wx-extremes" id="wx-ext">
             <div class="wx-hi"><svg class="arw arw-up" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 9 L7 3.2 L12.7 9"/><path d="M7 11.5 L7 20.5"/></svg><span id="wx-hi">-</span></div>
             <div class="wx-lo"><svg class="arw arw-dn" viewBox="0 0 14 24" aria-hidden="true"><path d="M1.3 15 L7 20.8 L12.7 15"/><path d="M7 12.5 L7 3.5"/></svg><span id="wx-lo">-</span></div>
           </div>
@@ -1200,7 +1200,7 @@ body.amber .panel .ver { color:#6b5a44; }
                 所以"没拉到天气"时看到的是「1小时后」「降雨概率」后面空着。
                 这是【有意】的（比整行消失更容易认出是天气没数据），别当成 bug 改掉。 -->
         <div class="wx-cell wx-c-next" id="wx-c-next">
-          <div class="wx-nbox">
+          <div class="wx-nbox" id="wx-nbox-next">
             <div class="wx-n2"><span class="lbl2">1小时后</span><span class="sep">·</span><span id="wx-next-w"></span></div>
             <div class="wx-n3">
               <span class="rain"><i></i></span><span class="lbl2">降雨概率</span><span class="pct" id="wx-next-p"></span>
@@ -1369,7 +1369,7 @@ body.amber .panel .ver { color:#6b5a44; }
     <div class="row" data-k="dateScale">
       <span class="lbl">日期大小</span>
       <input class="rng" type="range" id="date-scale"
-             min="0.5" max="2" step="0.05" value="1">
+             min="0.5" max="3" step="0.05" value="1">
       <span class="val" id="date-scale-val">100%</span>
     </div>
     <div class="row" data-k="dateY">
@@ -1381,7 +1381,7 @@ body.amber .panel .ver { color:#6b5a44; }
     <div class="row" data-k="wxScale">
       <span class="lbl">天气大小</span>
       <input class="rng" type="range" id="wx-scale"
-             min="0.5" max="2" step="0.05" value="1">
+             min="0.5" max="3" step="0.05" value="1">
       <span class="val" id="wx-scale-val">100%</span>
     </div>
     <div class="row" data-k="wxY">
@@ -1412,7 +1412,7 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️⚠️ 【每改一版都要改这一个字符串】，否则面板上显示的和 `版本记录.md` 会对不上。
          只此一处，不要在别处再写死版本号。
          每次定版时与 版本记录.md 的新小节标题、以及备份 zip 的文件名保持一致。 */
-  var APP_VER = 'v4.34';
+  var APP_VER = 'v4.35';
 
   // 天气刷新间隔：10 分钟。
   // 上游 Open-Meteo 的数据粒度是 15 分钟（实测 current.interval = 900 秒），
@@ -1538,6 +1538,8 @@ body.amber .panel .ver { color:#6b5a44; }
   var wxLo    = document.getElementById('wx-lo');     // 左模块：最低温
   var wxV2El  = document.getElementById('wx-v2');     // 三模块那套的外壳：layout() 会给它写 transform
   var wxBarEl = document.getElementById('wx-bar');    // 天气栏的【盒子】（layout() 量它的布局位置用）
+  var wxExtEl = document.getElementById('wx-ext');    // 高低温那块（量自然宽度用）
+  var wxNbxEl = document.getElementById('wx-nbox-next'); // 「一小时后」那两行的壳（同上）
   var wxFeel  = document.getElementById('wx-feel');   // 中模块 上行：体感温度
   var wxHum   = document.getElementById('wx-hum');    // 中模块 下行：相对湿度
   var wxNextW = document.getElementById('wx-next-w'); // 右模块 上行：未来 1 小时的天气
@@ -1580,8 +1582,11 @@ body.amber .panel .ver { color:#6b5a44; }
                     //    （v3 竖屏 ±4.4rem，v1 横屏只有 ±1.9rem），
                     //    共用一套必然在某一套里要么不够用、要么大半行程是死的。
                     // 位置单位 rem，【正 = 向下】；大小 1 = 原样。
-                    dateScale: { v1:1, v2:1, v3:1 }, dateY: { v1:0, v2:0, v3:0 },
-                    wxScale:   { v1:1, v2:1, v3:1 }, wxY:   { v1:0, v2:0, v3:0 },
+                    // ⚠️ v1（平衡）的日期/天气默认就是 1.5 倍 —— 它的内容整体比
+                    //    v2/v3 小一档（根字号小），1 倍时那两栏显得过于秀气。
+                    //    v1 的闸门能放到日期 ~205%、天气 ~239%，1.5 有余量。
+                    dateScale: { v1:1.5, v2:1, v3:1 }, dateY: { v1:0, v2:0, v3:0 },
+                    wxScale:   { v1:1.5, v2:1, v3:1 }, wxY:   { v1:0, v2:0, v3:0 },
                     sizeMul: { v1:1, v2:1, v3:1 } };                  // 每套样式各自的缩放倍率
 
   /* wxShow 的键，按【天气栏里从左到右】的顺序排 —— 注意是 detail 在中间。
@@ -1613,7 +1618,7 @@ body.amber .panel .ver { color:#6b5a44; }
         下面那个 MOD_Y_MAX 只是【存档校验】用的兜底上界，与滑杆量程无关；
         它必须 ≥ 任何可能出现的真实余量（最松的 v1 竖屏在 70% 倍率下约 ±10rem），
         否则用户存下来的合法值会在下次读取时被误判成脏值。 */
-  var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 2.00;
+  var MOD_SCALE_MIN = 0.50, MOD_SCALE_MAX = 3.00;
   var MOD_Y_MAX = 10.00;
 
   /* 样式键。凡是"按样式分键"的设置（sizeMul、这四个）都遍历它。 */
@@ -1622,8 +1627,8 @@ body.amber .panel .ver { color:#6b5a44; }
   /* 两根栏当前的可行程（px），由 layout() 里 measureBarLimits() 填。
      ⚠️ 两根栏【各有一份】，所以一栏放大/移动不会牵动另一栏 ——
         早先把它们共用一个"余量池"，结果日期一放大天气的位置就被挤掉。 */
-  var modLim = { dateUp: 0, dateDown: 0, dateH: 1,
-                 wxUp:   0, wxDown:   0, wxH:   1 };
+  var modLim = { dateUp: 0, dateDown: 0, dateH: 1, dateW: 0,
+                 wxUp:   0, wxDown:   0, wxH:   1, wxW:   0 };
 
   function clampModScale(v) {
     if (typeof v !== 'number' || isNaN(v)) { return 1; }
@@ -2055,15 +2060,13 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️ 描述侧是按 WMO 表里最长的【4 个字】记账的（「晴间多云」「冻毛毛雨」）。
         哪天往 WMO 表里塞更长的词（比如「雷阵雨伴有冰雹」），这里必须重算 ——
         失效的表现是最大倍率下天气栏溢出屏幕被裁，不报错。
-     它【不进 FOOTPRINT】—— 用途是算"天气栏从哪一刻起停止变大"，见 layout()。
+     ⚠️ 它现在是【兜底上界】，不再直接当缩放闸门用：
+        v4.35 起闸门改用 measureBarLimits() 量出来的【当前自然宽】——
+        最坏宽度是给"任何内容都保证不溢出"留的，拿它当上限会把放大空间压掉一大半
+        （天气栏最坏 10.61rem、实测常常只有 7rem ⇒ 上限从 165% 缩到 109%）。
+        这里的 5.305 只在【量不到】时兜底（元素缺失 / 根字号还没算出来）。
      ⚠️ 它与上面 FOOTPRINT.v3 注释里的"2 × 5.305 = 10.61"是【同一组事实的两种写法】，
-        改一处必须改另一处（那段现在只作为历史记录留着）。
-     ⚠️ 用静态最坏值、【不】运行时实测。实测在这里是有害的：
-        ① 外侧格的子项是 flex-shrink:1，格宽不够时会被压缩 —— 量到的是"当前可用宽"，
-           不是自然宽，测量结果自指；
-        ② 首次 layout() 时天气还没回来（#wx-main 内容是 "-"），量到的是个位数；
-        ③ 天气每 10 分钟、温度每变一位数字都会让量到的宽度变 → 缩放比例跟着跳，
-           那正是用户最反感的"位移"，比"一直小一点"刺眼得多。 */
+        改一处必须改另一处（那段现在只作为历史记录留着）。 */
   var BAR_HALF_REM = 5.305;
 
   /* 日期栏的【全宽最坏值】（rem）。它是单个居中的块，所以不像天气栏那样要乘 2。
@@ -2071,11 +2074,14 @@ body.amber .panel .ver { color:#6b5a44; }
      WMO 之外还要算农历（`lunarText` 最多「闰」+ 2 字月 + 2 字日 = 5 字）：
        10 汉字 + 4 数字 + 3 空格 + 1 个「·」 ≈ 13.3em，加 `.10em` 字距 ≈ 15.1em，
        在 `.54rem`（v2/v3 的 `.bar` 字号）下 ≈ 8.2rem → 记账 8.4（留 2%）。
-     ⚠️ 它是 v3 的【第四个宽度消费者】，见 FOOTPRINT.v3 那段审计。8.4 < 走带环的 9.42
-        ⇒ 平时不会成为瓶颈；但用「日期大小」把它放大之后会，所以要给它单独一道闸门。
-     ⚠️ 和 BAR_HALF_REM 一样用【静态最坏值】，不实测 —— 实测会被 transform 反噬
-        （getBoundingClientRect 返回的是变换后的宽，自己量自己成环），
-        而且农历开关、月份位数（1月 / 12月）都会让宽度跳。 */
+     ⚠️ 它现在是【兜底上界】，不再直接当缩放闸门用：
+        v4.35 起闸门用 measureBarLimits() 量出来的【当前自然宽】——
+        最坏值是为"任何内容都保证不溢出"留的余量，拿它当上限会白扔掉一大截放大空间
+        （农历关掉时日期常常只有 3.5rem，能放到 4 倍以上，而按 8.4rem 记账只给 2 倍）。
+        这里的 8.4 只在【量不到】时兜底。
+     ⚠️ 量的时候用 offsetWidth，【不能】用 getBoundingClientRect ——
+        后者含 transform，一根栏缩放过之后再量它就是自己量自己、成环。
+     ⚠️ 日期文案每天变 ⇒ 自然宽每天变 ⇒ 要在文案更新后重跑闸门（见 tick() 里的 refreshMod）。 */
   var DATE_W_REM = 8.4;
 
   /* 上一次 layout() 算出的根字号（px）。
@@ -2168,17 +2174,53 @@ body.amber .panel .ver { color:#6b5a44; }
      ⚠️ 两根栏【各算各的】，这是"互不牵制"的关键：
         日期放大只改变日期自己的余量，天气那边一个数都不动。 */
   function measureBarLimits() {
-    var H = window.innerHeight;
+    var H = window.innerHeight, size = curSize;
+
     if (dateEl) {
       modLim.dateH    = dateEl.offsetHeight;
-      modLim.dateUp   = dateEl.offsetTop;                       // 往上顶到屏幕顶
+      modLim.dateUp   = dateEl.offsetTop;                              // 往上顶到屏幕顶
       modLim.dateDown = H - (dateEl.offsetTop + dateEl.offsetHeight);  // 往下到屏幕底
+      /* 日期栏的自然宽：它本身就是那个居中的块，offsetWidth 直接就是内容宽。
+         ⚠️ 不能用 getBoundingClientRect —— 那含 transform，缩放过就成了自己量自己。
+         量不到（不该发生）就退回最坏值 DATE_W_REM。 */
+      var dw = dateEl.offsetWidth;
+      modLim.dateW = (dw > 0) ? dw : DATE_W_REM * size;
     }
+
     if (wxBarEl) {
       modLim.wxH    = wxBarEl.offsetHeight;
       modLim.wxUp   = wxBarEl.offsetTop;
       modLim.wxDown = H - (wxBarEl.offsetTop + wxBarEl.offsetHeight);
+      /* ⚠️ 天气栏本身是 width:100%，量它只会得到屏幕宽 —— 要量的是【里面内容】的自然宽。
+         结构与 BAR_HALF_REM 那段推导一一对应，只是把三个"最坏宽度"换成实测：
+           左半 = 当前温度 + .16 + 高低温 + .6 + 中格一半
+           右半 = 一小时后   + .6 + 中格一半
+         取【较宽那一侧的 2 倍】—— 中间模块钉在屏幕中轴上，所以两边都要容得下。
+         ⚠️ 量的三个都必须是【宽度 auto】的元素：#wx-main / #wx-ext / #wx-nbox-next。
+            它们 min-width 是默认的 auto、又都 nowrap ⇒ 挤不扁，offsetWidth 就是自然宽。
+            千万别去量 .wx-c-main / .wx-c-next —— 那两个是 flex:1，
+            量到的是"被分配到的宽度"（永远等于可用空间），一点用都没有。 */
+      if (wxMain && wxExtEl && wxNbxEl && size > 0) {
+        var R = function (rem) { return rem * size; };
+        var halfL = wxMain.offsetWidth + R(0.16) + wxExtEl.offsetWidth + R(0.6) + R(1.75) / 2;
+        var halfR = wxNbxEl.offsetWidth + R(0.6) + R(1.75) / 2;
+        modLim.wxW = 2 * Math.max(halfL, halfR);
+      }
+      if (!(modLim.wxW > 0)) { modLim.wxW = BAR_HALF_REM * 2 * size; }   // 兜底
     }
+  }
+
+  /* 内容变了（天气拉回来 / 日期跨天）→ 重新量一次、按新余量重写 transform。
+     ⚠️ 闸门是按【实测自然宽】算的，内容一变那个数就旧了：
+        不重算的话，天气从「阴」变成「晴间多云」之后，闸门还按旧的窄宽度封顶，
+        放大过的天气栏就会溢出屏幕被裁。
+     ⚠️ 只在"内容长度可能变了"的两处调用。默认倍率下这一步是无感的
+        （自然宽 ≤ 最坏宽度 ⇒ 闸门 ≥ 1 ⇒ min(1, 闸门) 恒为 1，画面不动）；
+        只有把「大小」推过 100% 之后，它才会按新宽度把倍数收一点回来 —— 那是必须的。 */
+  function refreshMod() {
+    if (!(curSize > 0)) { return; }
+    measureBarLimits();
+    applyModTransforms(curSize);
   }
 
   /* 把「大小」与「上下位置」落到 transform。
@@ -2205,12 +2247,14 @@ body.amber .panel .ver { color:#6b5a44; }
     var st = settings.style;
 
     /* 横向闸门：把用户设的倍数按"屏幕放得下多少"封顶。
+       ⚠️ 用的是 measureBarLimits() 量出来的【当前自然宽】，不是最坏宽度 ——
+          最坏宽度是给"保证任何内容都不溢出"留的，拿它当上限会把放大空间压掉一大半
+          （天气栏最坏 10.61rem、实测常常只有 7rem ⇒ 上限从 165% 变成 109%）。
+          `modLim.dateW` / `modLim.wxW` 已经是这段字号下的 px，不用再乘根字号。
        ⚠️ fitScale 的返回值【可以大于 1】—— 它算的是"最多能到多少倍"，
-          不是"不许超过原样"。封在 1 上的话滑杆往右拖只会白涨读数（v4.32 踩过）。
-       日期栏是单个居中的块 ⇒ 要它自己的全宽；天气栏要按"最宽那一侧 × 2"
-       （中间模块钉在屏幕中轴上）。 */
-    var ds = Math.min(settings.dateScale[st], fitScale(DATE_W_REM,       w, size));
-    var ws = Math.min(settings.wxScale[st],   fitScale(BAR_HALF_REM * 2, w, size));
+          不是"不许超过原样"。封在 1 上的话滑杆往右拖只会白涨读数（v4.32 踩过）。 */
+    var ds = Math.min(settings.dateScale[st], fitScale(modLim.dateW, w));
+    var ws = Math.min(settings.wxScale[st],   fitScale(modLim.wxW,   w));
 
     // 各自的上下限：屏幕边缘，再扣掉【自己】缩放往外扩的那部分（不影响对方）
     var dEx = Math.max(0, ds - 1) * modLim.dateH / 2;
@@ -2255,16 +2299,18 @@ body.amber .panel .ver { color:#6b5a44; }
     if (parseFloat(el.min) !== mn) { el.min = mn; }
     if (parseFloat(el.max) !== mx) { el.max = mx; }
   }
-  /* 一个 wRem 宽的块【最多能放大到多少倍】而不超出屏幕（返回倍数，不是 px）。
+  /* 一个自然宽 naturalW（px）的块【最多能放大到多少倍】而不超出屏幕（返回倍数）。
+     ⚠️ 入参和返回都是"倍数"，naturalW 是【当前根字号下】量出来的 px，
+        所以这里不用再除根字号 —— 量的时候已经是那段字号下的值了。
      ⚠️⚠️ 返回值【可以大于 1】，绝对不能写成 Math.min(1, …) ——
         那样 "min(用户值, 闸门值)" 就永远不可能超过 1，
         症状是**滑杆往右拖、读数在涨、实际大小纹丝不动**（v4.32 实测踩到）。
         闸门的职责是"最多能到多少"，不是"不许超过原样" —— 原样（1×）只是它众多取值之一。
      溢出保护不靠这里封顶：默认倍率下 min(1, fit) 仍然是 1（fit 远大于 1），
      而高倍率下 fit < 1，min(1, fit) 仍然是 fit —— 两种情况都和封顶前逐位相同。 */
-  function fitScale(wRem, w, size) {
-    if (!(size > 0)) { return 1; }
-    return (w * FIT / wRem) / size;
+  function fitScale(naturalW, w) {
+    if (!(naturalW > 0)) { return 1; }
+    return (w * FIT) / naturalW;
   }
 
   /* 把文字写进某个半片。结构固定为 <div class="half"><span>字</span></div>，
@@ -2682,6 +2728,11 @@ body.amber .panel .ver { color:#6b5a44; }
         if (lt) { ds += ' · ' + lt; }    // 超出农历表范围时 lunarText 返回空串，就只显示公历
       }
       dateEl.firstChild.nodeValue = ds;
+      /* ⚠️ 日期文案变了 ⇒ 自然宽变了 ⇒ 缩放闸门要重算。
+         「1月1日 星期一」和「12月31日 星期三」差两个字，加上农历差得更多 ——
+         不重算的话，用户按窄日期放大的倍数会在大月那天溢出屏幕。
+         一天只跑一次；默认倍率下画面不动（理由见 refreshMod 的注释）。 */
+      refreshMod();
     }
 
     autoThemeTick();   // 1Hz 检查昼夜切换（只在真正跨越日出/日落时才动作）
@@ -2823,6 +2874,13 @@ body.amber .panel .ver { color:#6b5a44; }
     }
     // ⚠️ 这里曾经还有一份"v1 单行版"的拼串 —— v4.32 起三套样式共用这一套三模块，
     //    已删除。`hi` / `lo` 现在只给模块一的 ↑↓ 用。
+
+    /* ⚠️ 天气内容变了 ⇒ 天气栏的自然宽变了 ⇒ 缩放闸门要重算。
+       描述从「阴」变成「晴间多云」能宽出 1.3rem 多 ——
+       不重算的话，用户放大过的天气栏会在换天气时溢出被裁。
+       ⚠️ 这一步【不引发重排】：量的是布局宽度（会强制一次同步重排，10 分钟一次），
+          写的是 transform（纯合成）。默认倍率下画面完全不动。 */
+    refreshMod();
   }
 
   /* ================= 示例数据（本地预览用） =================
